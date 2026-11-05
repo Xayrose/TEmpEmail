@@ -1,0 +1,43 @@
+name: Quality checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile Python modules
+        run: python -m compileall -q main.py bot.py providers.py run.py
+      - name: Check embedded JavaScript
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+
+          for filename in ("static/index.html", "static/admin.html"):
+              html = Path(filename).read_text(encoding="utf-8")
+              scripts = re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script>", html, re.S | re.I)
+              for index, script in enumerate(scripts):
+                  if script.strip():
+                      path = Path("/tmp") / f"{Path(filename).stem}-{index}.js"
+                      path.write_text(script, encoding="utf-8")
+                      subprocess.run(["node", "--check", str(path)], check=True)
+              print(f"JavaScript syntax OK: {filename}")
+          PY
+      - name: Check dependency consistency
+        run: python -m pip check
