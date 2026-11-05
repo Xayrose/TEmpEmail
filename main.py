@@ -46,7 +46,7 @@ def verify(raw):
         p=dict(parse_qsl(raw,keep_blank_values=True)); received=p.pop("hash")
         stamp=int(p.get("auth_date","0"))
         if abs(int(time.time())-stamp)>86400: raise ValueError()
-        check="\\n".join(f"{k}={v}" for k,v in sorted(p.items()))
+        check="\n".join(f"{k}={v}" for k,v in sorted(p.items()))
         secret=hmac.new(b"WebAppData",BOT_TOKEN.encode(),hashlib.sha256).digest()
         expected=hmac.new(secret,check.encode(),hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected,received): raise ValueError()
@@ -84,7 +84,7 @@ async def poller():
                             c=await d.execute("INSERT OR IGNORE INTO seen VALUES(?,?)",(b["id"],m["id"])); await d.commit()
                             fresh=c.rowcount==1
                         if fresh:
-                            msg=(f"✉️ Новое письмо\\n{b['address']}\\nОт: {sender_address(m.get('from'))}\\nТема: {m.get('subject') or '(без темы)'}\\n\\n{m.get('intro','')[:600]}\\nОткройте Mini App для чтения.")
+                            msg=(f"✉️ Новое письмо\n{b['address']}\nОт: {sender_address(m.get('from'))}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения.")
                             async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
                 except Exception as e: print("poll:",e)
                 await asyncio.sleep(.12)
