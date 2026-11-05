@@ -68,8 +68,12 @@ async def getbox(bid,uid):
         d.row_factory=aiosqlite.Row;c=await d.execute("SELECT * FROM inboxes WHERE id=? AND user_id=?",(bid,uid));x=await c.fetchone();return dict(x) if x else None
 async def show_domains(m):
     try:
+        available=(await domains())[:30]
+        if not available:
+            await m.answer("Сейчас почтовые сервисы не отдают доступные домены. Попробуйте позже.")
+            return
         b=InlineKeyboardBuilder();b.button(text="🎲 Случайный домен",callback_data="domain:random")
-        for domain,provider in (await domains())[:30]:b.button(text="@"+domain,callback_data="domain:"+domain)
+        for domain,provider in available:b.button(text="@"+domain+" · "+provider,callback_data="domain:"+domain)
         b.adjust(1);await m.answer("Выберите домен из Mail.tm, Mail.gw или 1secmail:",reply_markup=b.as_markup())
     except Exception as e:await m.answer("Ошибка: "+str(e))
 async def show_boxes(chat,uid):
