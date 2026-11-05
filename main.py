@@ -155,26 +155,18 @@ class Create(BaseModel):
     provider:str="mailtm"
 @app.post("/api/inboxes")
 async def create(req:Create,authorization:str|None=Header(default=None)):
-    u=user(authorization); ds=await domains()
-    if not ds: raise HTTPException(502,"Нет доступных доменов")
+    u=user(authorization)
     provider=req.provider if req.provider in ("mailtm","1secmail","besttempmail","guerrilla","catchmail") else "mailtm"
-    address,meta,lifetime=await providers.create(provider,req.name,req.domain,http)
+    name=req.name.strip().lower()
+    if name and not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Некорректное имя ящика")
+    try:
+        address,meta,lifetime=await providers.create(provider,name,req.domain,http)
+    except Exception as e: raise HTTPException(502,str(e))
     now=int(time.time())
     async with aiosqlite.connect(DB) as d:
         c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(u["id"],u["username"],address,"",meta.get("token",""),meta.get("api_id",""),now+lifetime,now,provider,json.dumps(meta))); await d.commit()
         return {"id":c.lastrowid,"address":address,"expires":now+lifetime,"provider":provider}
-    domain=secrets.choice(ds) if req.domain=="random" else req.domain
-    if domain not in ds: raise HTTPException(400,"Домен недоступен")
-    name=req.name.strip().lower() or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))
-    if not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Имя: 1–40 символов, латинские буквы, цифры, точка, дефис или подчёркивание")
-    address=name+"@"+domain
-    password=secrets.token_urlsafe(28)
-    account=await mail("POST","/accounts",payload={"address":address,"password":password})
-    auth=await mail("POST","/token",payload={"address":address,"password":password})
-    now=int(time.time())
-    async with aiosqlite.connect(DB) as d:
-        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created) VALUES(?,?,?,?,?,?,?,?)",(u["id"],u["username"],address,password,auth["token"],account["id"],now+3600,now)); await d.commit()
-        return {"id":c.lastrowid,"address":address,"expires":now+3600}
+
 @app.get("/api/inboxes")
 async def list_boxes(authorization:str|None=Header(default=None)):
     u=user(authorization)
