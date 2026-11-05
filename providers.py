@@ -21,13 +21,26 @@ async def request(session, method, url, *, params=None, json_body=None, headers=
             raise RuntimeError(f"Почтовый сервис вернул HTTP {r.status}: {data}")
         return data, dict(r.headers)
 
+async def hydra_domains(session, base_url):
+    result=[]
+    for page in range(1,21):
+        data,_=await request(session,"GET",base_url+"/domains",params={"page":page})
+        items=members(data)
+        for item in items:
+            if not isinstance(item,dict): continue
+            domain=str(item.get("domain") or "").strip().lower().lstrip("@")
+            if domain and item.get("isActive",True) and not item.get("isPrivate",False):
+                result.append(domain)
+        try: total=int(data.get("hydra:totalItems")) if isinstance(data,dict) else None
+        except (TypeError,ValueError): total=None
+        if not items or (total is not None and len(result)>=total): break
+    return list(dict.fromkeys(result))
+
 async def create(provider, name, domain, session):
     name = (name or "").strip().lower()
     if provider in ("mailtm","mailgw"):
-        from main import hydra_domain_list
         base = "https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm"
-        # Проверяем выбранный домен тем же полным списком страниц, что и /api/domains.
-        ds = await hydra_domain_list(base, provider)
+        ds = await hydra_domains(session, base)
         dom = __import__("secrets").choice(ds) if domain in ("", "random") else domain
         if dom not in ds: raise ValueError("Домен Mail.tm недоступен")
         import secrets, string
