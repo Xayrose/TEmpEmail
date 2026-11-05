@@ -4,7 +4,7 @@ Telegram temporary-email bot and Mini App powered by [Mail.tm](https://mail.tm/)
 
 ## Included
 
-- Telegram bot: create inboxes, choose a Mail.tm domain or random domain, list inboxes, view incoming messages and delete inboxes.
+- Telegram bot: create inboxes using available Mail.tm, Mail.gw and 1secmail domains, list inboxes, view incoming messages, refresh expiry timers and delete inboxes.
 - Telegram Mini App: responsive Apple-inspired Liquid Glass interface, inbox creation, address copy, message list and plain-text message reader.
 - FastAPI backend: Telegram Web App `initData` HMAC verification, inbox/message API, one-hour expiry, Telegram notifications for new messages and admin statistics endpoint. Admins also get a dashboard at `/static/admin.html`.
 - SQLite storage and Docker deployment.
@@ -63,6 +63,8 @@ All Mini App API calls require valid Telegram `initData`. Configure `ADMIN_IDS` 
 - Never commit `.env`, bot tokens, the SQLite database, or backups. The repository includes only a placeholder `.env.example`.
 - The database directory must be on persistent storage; ephemeral container filesystems can erase inbox state on redeploy.
 - The app displays plain-text email bodies only. It does not execute received HTML or expose attachments.
-- Available domains are supplied by Mail.tm; arbitrary custom domains are not supported.
+- The Mini App and Telegram bot aggregate currently available public domains from Mail.tm, Mail.gw and 1secmail. The list is dynamic and depends on each provider's live API response; arbitrary custom domains are not supported.
+- The app enforces a one-hour local inbox lifetime for Mail.tm, Mail.gw and 1secmail addresses. Provider-side retention/deletion behavior may differ; the app removes expired inbox records and deletes Mail.tm/Mail.gw accounts where supported.
+- The Mini App countdown is synchronized against server time and updates every second. Telegram messages show a snapshot; use the “Обновить таймер” button to refresh it.
 - Use temporary inboxes only for non-sensitive communications. Review Mail.tm documentation, rate limits and acceptable-use terms before public or commercial deployment.
 - The project has not been end-to-end tested against a live Telegram bot token and live Mail.tm account in this environment. Configure secrets and test on your own deployment before public use.
