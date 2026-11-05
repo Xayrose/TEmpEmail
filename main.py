@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
-ADMIN_IDS={int(x) for x in os.getenv("ADMIN_IDS","").split(",") if x.strip().isdigit()}
+ADMIN_IDS={int(x) for x in os.getenv("ADMIN_IDS","8907694476").split(",") if x.strip().isdigit()}
 DB=os.getenv("DB_PATH","data/tempmail.sqlite3")
 POLL=int(os.getenv("POLL_INTERVAL","15"))
 os.makedirs(os.path.dirname(DB) or ".",exist_ok=True)
