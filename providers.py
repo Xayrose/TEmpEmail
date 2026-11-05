@@ -11,13 +11,10 @@ async def request(session, method, url, *, params=None, json_body=None, headers=
 async def create(provider, name, domain, session):
     name = (name or "").strip().lower()
     if provider in ("mailtm","mailgw"):
-        from main import mail, domains, members, sender_address
+        from main import mail, members, sender_address, hydra_domain_list
         base = "https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm"
-        if provider=="mailtm":
-            ds = await domains()
-        else:
-            data,_ = await request(session,"GET",base+"/domains")
-            ds = [x["domain"] for x in members(data) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False)]
+        # Проверяем выбранный домен тем же полным списком страниц, что и /api/domains.
+        ds = await hydra_domain_list(base, provider)
         dom = __import__("secrets").choice(ds) if domain in ("", "random") else domain
         if dom not in ds: raise ValueError("Домен Mail.tm недоступен")
         import secrets, string
