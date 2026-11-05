@@ -69,12 +69,13 @@ async def getbox(bid,uid):
 async def show_domains(m):
     try:
         available=(await domains())[:30]
-        if not available:
-            await m.answer("Сейчас почтовые сервисы не отдают доступные домены. Попробуйте позже.")
-            return
-        b=InlineKeyboardBuilder();b.button(text="🎲 Случайный домен",callback_data="domain:random")
+        b=InlineKeyboardBuilder()
+        b.button(text="🎲 Случайный домен",callback_data="domain:random")
+        b.button(text="🟠 Guerrilla Mail · случайный адрес",callback_data="service:guerrilla")
         for domain,provider in available:b.button(text="@"+domain+" · "+provider,callback_data="domain:"+domain)
-        b.adjust(1);await m.answer("Выберите домен из Mail.tm, Mail.gw или 1secmail:",reply_markup=b.as_markup())
+        b.adjust(1)
+        if not available: await m.answer("Домены Mail.tm/Mail.gw/1secmail сейчас недоступны. Но можно попробовать Guerrilla Mail.",reply_markup=b.as_markup())
+        else: await m.answer("Выберите сервис или домен:",reply_markup=b.as_markup())
     except Exception as e:await m.answer("Ошибка: "+str(e))
 async def show_boxes(chat,uid):
     xs=await getboxes(uid)
@@ -97,6 +98,15 @@ async def help_cmd(m:Message):await m.answer("/start — меню\n/new — со
 async def new_cb(c):await show_domains(c.message);await c.answer()
 @dp.callback_query(F.data=="mails")
 async def mails_cb(c):await show_boxes(c.message.chat.id,c.from_user.id);await c.answer()
+@dp.callback_query(F.data.startswith("service:"))
+async def service_cb(c):
+    try:
+        provider=c.data.split(":",1)[1]
+        if provider!="guerrilla": raise ValueError("Неизвестный сервис")
+        bid,address,lifetime=await create(c.from_user.id,c.from_user.username,provider,"")
+        await c.message.answer(f"✅ <b>Почта создана через Guerrilla Mail</b>\\n<code>{html.escape(address)}</code>\\nСрок: {lifetime//60} мин.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{bid}")],[InlineKeyboardButton(text="Мои почты",callback_data="mails")]]))
+    except Exception as e: await c.message.answer("Ошибка: "+html.escape(str(e)))
+    await c.answer()
 @dp.callback_query(F.data.startswith("domain:"))
 async def domain_cb(c):
     try:
