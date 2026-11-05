@@ -31,7 +31,7 @@ jobs:
 
           for filename in ("static/index.html", "static/admin.html"):
               html = Path(filename).read_text(encoding="utf-8")
-              scripts = re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script>", html, re.S | re.I)
+              scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.S | re.I)
               for index, script in enumerate(scripts):
                   if script.strip():
                       path = Path("/tmp") / f"{Path(filename).stem}-{index}.js"
