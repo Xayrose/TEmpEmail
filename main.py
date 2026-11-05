@@ -2,6 +2,7 @@ import os, time, json, hmac, hashlib, secrets, string, asyncio, re
 from urllib.parse import parse_qsl
 from contextlib import asynccontextmanager, suppress
 import aiohttp, aiosqlite
+import providers
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -36,7 +37,10 @@ async def mail(method,path,token=None,payload=None):
 
 async def init_db():
     async with aiosqlite.connect(DB) as d:
-        await d.execute("""CREATE TABLE IF NOT EXISTS inboxes(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,address TEXT,password TEXT,token TEXT,api_id TEXT,expires INTEGER,created INTEGER)""")
+        await d.execute("""CREATE TABLE IF NOT EXISTS inboxes(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,address TEXT,password TEXT,token TEXT,api_id TEXT,expires INTEGER,created INTEGER,provider TEXT DEFAULT 'mailtm',provider_data TEXT DEFAULT '{}')""")
+        cols={r[1] for r in await (await d.execute("PRAGMA table_info(inboxes)")).fetchall()}
+        if "provider" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider TEXT DEFAULT 'mailtm'")
+        if "provider_data" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider_data TEXT DEFAULT '{}'")
         await d.execute("""CREATE TABLE IF NOT EXISTS seen(inbox_id INTEGER,message_id TEXT,PRIMARY KEY(inbox_id,message_id))""")
         await d.commit()
 
@@ -78,8 +82,11 @@ async def poller():
                 c=await d.execute("SELECT * FROM inboxes WHERE expires>?",(int(time.time()),)); boxes=[dict(x) for x in await c.fetchall()]
             for b in boxes:
                 try:
-                    data=await mail("GET","/messages",b["token"])
-                    for m in members(data):
+                    meta=json.loads(b.get("provider_data") or "{}")
+                    items=await providers.messages(b.get("provider") or "mailtm",b["address"],meta,http)
+                    async with aiosqlite.connect(DB) as d:
+                        await d.execute("UPDATE inboxes SET provider_data=? WHERE id=?",(json.dumps(meta),b["id"])); await d.commit()
+                    for m in items:
                         async with aiosqlite.connect(DB) as d:
                             c=await d.execute("INSERT OR IGNORE INTO seen VALUES(?,?)",(b["id"],m["id"])); await d.commit()
                             fresh=c.rowcount==1
@@ -126,18 +133,36 @@ async def health(): return {"status":"ok"}
 @app.get("/api/me")
 async def me(authorization:str|None=Header(default=None)):
     u=user(authorization); return {"user":u,"is_admin":u["id"] in ADMIN_IDS}
-@app.get("/api/domains")
-async def get_domains(authorization:str|None=Header(default=None)):
+@app.get("/api/providers")
+async def get_providers(authorization:str|None=Header(default=None)):
     user(authorization)
-    try: return {"domains":await domains()}
+    return {"providers":[{"id":"mailtm","name":"Mail.tm"},{"id":"1secmail","name":"1secmail"},{"id":"besttempmail","name":"Best-TempMail"},{"id":"guerrilla","name":"Guerrilla Mail"},{"id":"catchmail","name":"Catchmail"}]}
+@app.get("/api/domains")
+async def get_domains(provider:str="mailtm",authorization:str|None=Header(default=None)):
+    user(authorization)
+    try:
+        if provider=="mailtm": ds=await domains()
+        elif provider=="1secmail":
+            data,_=await providers.request(http,"GET","https://www.1secmail.com/api/v1/",params={"action":"getDomainList"}); ds=[x.lstrip("@") for x in data if isinstance(x,str)]
+        elif provider=="catchmail": ds=["catchmail.io"]
+        elif provider in ("besttempmail","guerrilla"): ds=["random"]
+        else: raise ValueError("Неизвестный сервис")
+        return {"domains":ds}
     except Exception as e: raise HTTPException(502,str(e))
 class Create(BaseModel):
     domain:str="random"
     name:str=""
+    provider:str="mailtm"
 @app.post("/api/inboxes")
 async def create(req:Create,authorization:str|None=Header(default=None)):
     u=user(authorization); ds=await domains()
     if not ds: raise HTTPException(502,"Нет доступных доменов")
+    provider=req.provider if req.provider in ("mailtm","1secmail","besttempmail","guerrilla","catchmail") else "mailtm"
+    address,meta,lifetime=await providers.create(provider,req.name,req.domain,http)
+    now=int(time.time())
+    async with aiosqlite.connect(DB) as d:
+        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(u["id"],u["username"],address,"",meta.get("token",""),meta.get("api_id",""),now+lifetime,now,provider,json.dumps(meta))); await d.commit()
+        return {"id":c.lastrowid,"address":address,"expires":now+lifetime,"provider":provider}
     domain=secrets.choice(ds) if req.domain=="random" else req.domain
     if domain not in ds: raise HTTPException(400,"Домен недоступен")
     name=req.name.strip().lower() or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))
@@ -166,13 +191,12 @@ async def delete_box(box_id:int,authorization:str|None=Header(default=None)):
     return {"ok":True}
 @app.get("/api/inboxes/{box_id}/messages")
 async def messages(box_id:int,authorization:str|None=Header(default=None)):
-    u=user(authorization); b=await box_for(box_id,u["id"]); data=await mail("GET","/messages",b["token"])
-    return {"messages":[{"id":m["id"],"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"intro":m.get("intro",""),"created":m.get("createdAt","")} for m in members(data)[:40]]}
+    u=user(authorization); b=await box_for(box_id,u["id"]); meta=json.loads(b.get("provider_data") or "{}"); items=await providers.messages(b.get("provider") or "mailtm",b["address"],meta,http)
+    async with aiosqlite.connect(DB) as d: await d.execute("UPDATE inboxes SET provider_data=? WHERE id=?",(json.dumps(meta),box_id)); await d.commit()
+    return {"messages":items[:40]}
 @app.get("/api/inboxes/{box_id}/messages/{message_id}")
 async def read(box_id:int,message_id:str,authorization:str|None=Header(default=None)):
-    u=user(authorization); b=await box_for(box_id,u["id"]); m=await mail("GET",f"/messages/{message_id}",b["token"])
-    with suppress(Exception): await mail("PATCH",f"/messages/{message_id}",b["token"])
-    return {"id":m["id"],"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"created":m.get("createdAt",""),"text":m.get("text") or "Нет текстовой версии письма."}
+    u=user(authorization); b=await box_for(box_id,u["id"]); meta=json.loads(b.get("provider_data") or "{}"); return await providers.read(b.get("provider") or "mailtm",b["address"],meta,message_id,http)
 @app.get("/api/admin/stats")
 async def stats(authorization:str|None=Header(default=None)):
     u=user(authorization)
