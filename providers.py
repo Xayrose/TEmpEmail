@@ -60,7 +60,7 @@ async def messages(provider,address,meta,session):
         data,_=await request(session,"GET","https://www.1secmail.com/api/v1/",params={"action":"getMessages","login":meta["login"],"domain":meta["domain"]})
         return [{"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":m.get("from","?"),"intro":m.get("subject",""),"created":m.get("date","")} for m in data]
     if provider=="besttempmail":
-        data,_=await request(session,"GET","https://api.best-tempmail.com/v1/inboxes/"+quote(address,safe="")+" /messages".replace(" ",""))
+        data,_=await request(session,"GET","https://api.best-tempmail.com/v1/inboxes/"+quote(address,safe="")+"/messages")
         return [{"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":m.get("from","?"),"intro":m.get("subject",""),"created":m.get("date","")} for m in data.get("messages",[])]
     if provider=="catchmail":
         data,_=await request(session,"GET","https://api.catchmail.io/api/v1/mailbox",params={"address":address})
