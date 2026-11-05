@@ -116,7 +116,7 @@ async def timer_cb(c):
         await c.answer("Срок почты истёк",show_alert=True)
         return
     left=max(0,b["expires"]-int(time.time()))
-    text=f"📮 <code>{html.escape(b['address'])}</code>\\nОсталось: <b>{left//60:02d}:{left%60:02d}</b>"
+    text=f"📮 <code>{html.escape(b['address'])}</code>\nОсталось: <b>{left//60:02d}:{left%60:02d}</b>"
     kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{b['id']}"),InlineKeyboardButton(text="Обновить таймер",callback_data=f"timer:{b['id']}")],[InlineKeyboardButton(text="Удалить",callback_data=f"del:{b['id']}")]])
     await c.message.edit_text(text,parse_mode="HTML",reply_markup=kb)
     await c.answer("Таймер обновлён")
@@ -139,7 +139,7 @@ async def open_cb(c):
             subject=html.escape(str(x.get("subject") or "(без темы)"))
             sender=html.escape(str(x.get("from") or "?"))
             intro=html.escape(str(x.get("intro") or "")[:250])
-            await c.message.answer(f"✉️ <b>{subject}</b>\\nОт: {sender}\\n\\n{intro}",parse_mode="HTML")
+            await c.message.answer(f"✉️ <b>{subject}</b>\nОт: {sender}\n\n{intro}",parse_mode="HTML")
     except Exception as e: await c.message.answer("Ошибка: "+html.escape(str(e)))
     await c.answer()
 @dp.callback_query(F.data.startswith("del:"))
