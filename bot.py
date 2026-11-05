@@ -6,7 +6,7 @@ from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton,WebA
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 load_dotenv()
-TOKEN=os.getenv("BOT_TOKEN","").strip(); URL=os.getenv("WEBAPP_URL","").strip(); DB=os.getenv("DB_PATH","data/tempmail.sqlite3")
+TOKEN=os.getenv("BOT_TOKEN","").strip(); URL=os.getenv("WEBAPP_URL","").strip(); URL=("https://"+URL if URL and not URL.startswith(("https://","http://")) else URL); DB=os.getenv("DB_PATH","data/tempmail.sqlite3")
 if not TOKEN: raise RuntimeError("Set BOT_TOKEN in .env")
 API="https://api.mail.tm"; bot=Bot(TOKEN); dp=Dispatcher(); session=None
 def home():
