@@ -138,30 +138,49 @@ async def me(authorization:str|None=Header(default=None)):
 async def get_providers(authorization:str|None=Header(default=None)):
     user(authorization)
     return {"providers":[{"id":"mailtm","name":"Mail.tm"},{"id":"1secmail","name":"1secmail"},{"id":"besttempmail","name":"Best-TempMail"},{"id":"guerrilla","name":"Guerrilla Mail"},{"id":"catchmail","name":"Catchmail"}]}
-@app.get("/api/domains")
-async def get_domains(provider:str="mailtm",authorization:str|None=Header(default=None)):
-    user(authorization)
+async def available_domain_sources():
+    found=[]
     try:
-        if provider=="mailtm": ds=await domains()
-        elif provider=="1secmail":
-            data,_=await providers.request(http,"GET","https://www.1secmail.com/api/v1/",params={"action":"getDomainList"}); ds=[x.lstrip("@") for x in data if isinstance(x,str)]
-        elif provider=="catchmail": ds=["catchmail.io"]
-        elif provider in ("besttempmail","guerrilla"): ds=["random"]
-        else: raise ValueError("Неизвестный сервис")
-        return {"domains":ds}
-    except Exception as e: raise HTTPException(502,str(e))
+        found.extend((d,"mailtm") for d in await domains())
+    except Exception as e:
+        print("Mail.tm domains:",e)
+    try:
+        data,_=await providers.request(http,"GET","https://www.1secmail.com/api/v1/",params={"action":"getDomainList"})
+        found.extend((x.lstrip("@"),"1secmail") for x in data if isinstance(x,str) and x.strip())
+    except Exception as e:
+        print("1secmail domains:",e)
+    # Сохраняем реальный источник каждого домена; при совпадении предпочитаем Mail.tm.
+    unique={}
+    for domain,source in found:
+        unique.setdefault(domain,source)
+    return list(unique.items())
+
+@app.get("/api/domains")
+async def get_domains(authorization:str|None=Header(default=None)):
+    user(authorization)
+    sources=await available_domain_sources()
+    if not sources: raise HTTPException(502,"Не удалось получить список доступных доменов")
+    return {"domains":sorted(domain for domain,_ in sources)}
+
 class Create(BaseModel):
     domain:str="random"
     name:str=""
-    provider:str="mailtm"
+
 @app.post("/api/inboxes")
 async def create(req:Create,authorization:str|None=Header(default=None)):
     u=user(authorization)
-    provider=req.provider if req.provider in ("mailtm","1secmail","besttempmail","guerrilla","catchmail") else "mailtm"
     name=req.name.strip().lower()
     if name and not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Некорректное имя ящика")
     try:
-        address,meta,lifetime=await providers.create(provider,name,req.domain,http)
+        sources=await available_domain_sources()
+        if not sources: raise ValueError("Список доменов временно недоступен")
+        if req.domain in ("","random"):
+            domain,provider=secrets.choice(sources)
+        else:
+            match=next(((d,p) for d,p in sources if d==req.domain),None)
+            if not match: raise ValueError("Этот домен больше недоступен. Обновите список.")
+            domain,provider=match
+        address,meta,lifetime=await providers.create(provider,name,domain,http)
     except Exception as e: raise HTTPException(502,str(e))
     now=int(time.time())
     async with aiosqlite.connect(DB) as d:
