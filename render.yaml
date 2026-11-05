@@ -2,7 +2,6 @@ services:
   - type: web
     name: xayrose-tempmail
     runtime: docker
-    plan: starter
     healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
@@ -18,7 +17,3 @@ services:
           type: web
           name: xayrose-tempmail
           property: host
-    disk:
-      name: tempmail-data
-      mountPath: /app/data
-      sizeGB: 1
