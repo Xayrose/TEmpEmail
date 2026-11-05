@@ -1,6 +1,19 @@
 import json
 from urllib.parse import quote
 
+def members(data):
+    if isinstance(data,list): return data
+    if isinstance(data,dict):
+        for key in ("hydra:member","member","items","data"):
+            value=data.get(key)
+            if isinstance(value,list): return value
+    return []
+
+def sender_address(value):
+    if isinstance(value,dict): return value.get("address","?")
+    if isinstance(value,list) and value and isinstance(value[0],dict): return value[0].get("address","?")
+    return "?"
+
 async def request(session, method, url, *, params=None, json_body=None, headers=None):
     async with session.request(method, url, params=params, json=json_body, headers=headers) as r:
         data = await r.json(content_type=None) if r.status != 204 else {}
@@ -11,7 +24,7 @@ async def request(session, method, url, *, params=None, json_body=None, headers=
 async def create(provider, name, domain, session):
     name = (name or "").strip().lower()
     if provider in ("mailtm","mailgw"):
-        from main import mail, members, sender_address, hydra_domain_list
+        from main import hydra_domain_list
         base = "https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm"
         # Проверяем выбранный домен тем же полным списком страниц, что и /api/domains.
         ds = await hydra_domain_list(base, provider)
@@ -21,12 +34,8 @@ async def create(provider, name, domain, session):
         local = name or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))
         address = local + "@" + dom
         password = secrets.token_urlsafe(28)
-        if provider=="mailtm":
-            account = await mail("POST", "/accounts", payload={"address":address,"password":password})
-            auth = await mail("POST", "/token", payload={"address":address,"password":password})
-        else:
-            account,_ = await request(session,"POST",base+"/accounts",json_body={"address":address,"password":password})
-            auth,_ = await request(session,"POST",base+"/token",json_body={"address":address,"password":password})
+        account,_ = await request(session,"POST",base+"/accounts",json_body={"address":address,"password":password})
+        auth,_ = await request(session,"POST",base+"/token",json_body={"address":address,"password":password})
         return address, {"token":auth["token"],"api_id":account["id"],"password":password,"base_url":base}, 3600
     if provider == "1secmail":
         import secrets, string
@@ -59,11 +68,8 @@ async def create(provider, name, domain, session):
 
 async def messages(provider,address,meta,session):
     if provider in ("mailtm","mailgw"):
-        from main import mail,members,sender_address
-        if provider=="mailtm":
-            data=await mail("GET","/messages",meta["token"])
-        else:
-            data,_=await request(session,"GET",meta.get("base_url","https://api.mail.gw")+"/messages",headers={"Authorization":"Bearer "+meta["token"]})
+        base=meta.get("base_url","https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm")
+        data,_=await request(session,"GET",base+"/messages",headers={"Authorization":"Bearer "+meta["token"]})
         return [{"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"intro":m.get("intro",""),"created":m.get("createdAt","")} for m in members(data)]
     if provider=="1secmail":
         data,_=await request(session,"GET","https://www.1secmail.com/api/v1/",params={"action":"getMessages","login":meta["login"],"domain":meta["domain"]})
@@ -83,11 +89,8 @@ async def messages(provider,address,meta,session):
 
 async def read(provider,address,meta,message_id,session):
     if provider in ("mailtm","mailgw"):
-        from main import mail,sender_address
-        if provider=="mailtm":
-            m=await mail("GET",f"/messages/{message_id}",meta["token"])
-        else:
-            m,_=await request(session,"GET",meta.get("base_url","https://api.mail.gw")+f"/messages/{message_id}",headers={"Authorization":"Bearer "+meta["token"]})
+        base=meta.get("base_url","https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm")
+        m,_=await request(session,"GET",base+f"/messages/{quote(str(message_id),safe='')}",headers={"Authorization":"Bearer "+meta["token"]})
         return {"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"created":m.get("createdAt",""),"text":m.get("text") or m.get("intro") or "Нет текстовой версии письма."}
     if provider=="1secmail":
         m,_=await request(session,"GET","https://www.1secmail.com/api/v1/",params={"action":"readMessage","login":meta["login"],"domain":meta["domain"],"id":message_id})
@@ -106,8 +109,6 @@ async def read(provider,address,meta,message_id,session):
     raise ValueError("Неизвестный сервис")
 
 async def delete(provider, meta, session):
-    if provider=="mailtm":
-        from main import mail
-        await mail("DELETE",f"/accounts/{meta['api_id']}",meta["token"])
-    elif provider=="mailgw":
-        await request(session,"DELETE",meta.get("base_url","https://api.mail.gw")+f"/accounts/{meta['api_id']}",headers={"Authorization":"Bearer "+meta["token"]})
+    if provider in ("mailtm","mailgw"):
+        base=meta.get("base_url","https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm")
+        await request(session,"DELETE",base+f"/accounts/{quote(str(meta['api_id']),safe='')}",headers={"Authorization":"Bearer "+meta["token"]})
