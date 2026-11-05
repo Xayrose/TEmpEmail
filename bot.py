@@ -37,22 +37,29 @@ async def req(method,path,token=None,payload=None,params=None):
         return d
 async def domains():
     found=[]
-    for page in range(1,21):
-        d=await req("GET","/domains",params={"page":page})
-        items=members(d)
-        found.extend(x["domain"].strip().lower() for x in items if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False))
-        try: total=int(d.get("hydra:totalItems")) if isinstance(d,dict) else None
-        except (TypeError,ValueError): total=None
-        if not items or (total is not None and len(found)>=total): break
-    return list(dict.fromkeys(found))
-async def create(uid,username,domain):
-    ds=await domains();domain=secrets.choice(ds) if domain=="random" else domain
-    if domain not in ds:raise RuntimeError("Домен недоступен")
-    address="".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))+"@"+domain; password=secrets.token_urlsafe(28)
-    account=await req("POST","/accounts",payload={"address":address,"password":password}); auth=await req("POST","/token",payload={"address":address,"password":password}); now=int(time.time())
+    for provider,base in (("mailtm","https://api.mail.tm"),("mailgw","https://api.mail.gw")):
+        try:
+            found.extend((domain,provider) for domain in await providers.hydra_domains(session,base))
+        except Exception as e:
+            print(f"{provider} domains error: {e}",flush=True)
+    try:
+        data,_=await providers.request(session,"GET","https://www.1secmail.com/api/v1/",params={"action":"getDomainList"})
+        if isinstance(data,list):
+            found.extend((str(domain).strip().lower().lstrip("@"),"1secmail") for domain in data if isinstance(domain,str) and domain.strip())
+    except Exception as e:
+        print(f"1secmail domains error: {e}",flush=True)
+    unique={}
+    for domain,provider in found:
+        unique.setdefault(domain,provider)
+    return list(unique.items())
+
+async def create(uid,username,provider,domain):
+    address,meta,lifetime=await providers.create(provider,"",domain,session)
+    now=int(time.time())
     async with aiosqlite.connect(DB) as d:
-        meta={"token":auth["token"],"api_id":account["id"],"password":password,"base_url":API}
-        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(uid,username,address,password,auth["token"],account["id"],now+3600,now,"mailtm",json.dumps(meta)));await d.commit();return c.lastrowid,address
+        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(uid,username,address,meta.get("password",""),meta.get("token",""),meta.get("api_id",""),now+lifetime,now,provider,json.dumps(meta)))
+        await d.commit()
+        return c.lastrowid,address,lifetime
 async def getboxes(uid):
     async with aiosqlite.connect(DB) as d:
         d.row_factory=aiosqlite.Row;c=await d.execute("SELECT id,address,expires FROM inboxes WHERE user_id=? AND expires>?",(uid,int(time.time())));return [dict(x) for x in await c.fetchall()]
@@ -62,8 +69,8 @@ async def getbox(bid,uid):
 async def show_domains(m):
     try:
         b=InlineKeyboardBuilder();b.button(text="🎲 Случайный домен",callback_data="domain:random")
-        for x in (await domains())[:30]:b.button(text="@"+x,callback_data="domain:"+x)
-        b.adjust(1);await m.answer("Выберите домен:",reply_markup=b.as_markup())
+        for domain,provider in (await domains())[:30]:b.button(text="@"+domain,callback_data="domain:"+domain)
+        b.adjust(1);await m.answer("Выберите домен из Mail.tm, Mail.gw или 1secmail:",reply_markup=b.as_markup())
     except Exception as e:await m.answer("Ошибка: "+str(e))
 async def show_boxes(chat,uid):
     xs=await getboxes(uid)
@@ -89,8 +96,17 @@ async def mails_cb(c):await show_boxes(c.message.chat.id,c.from_user.id);await c
 @dp.callback_query(F.data.startswith("domain:"))
 async def domain_cb(c):
     try:
-        bid,address=await create(c.from_user.id,c.from_user.username,c.data.split(":",1)[1])
-        await c.message.answer(f"✅ <b>Почта создана</b>\n<code>{address}</code>\nСрок действия: 60 минут.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{bid}")],[InlineKeyboardButton(text="Мои почты",callback_data="mails")]]))
+        selected=c.data.split(":",1)[1]
+        available=await domains()
+        if selected=="random":
+            if not available: raise RuntimeError("Сейчас нет доступных доменов")
+            domain,provider=secrets.choice(available)
+        else:
+            match=next(((domain,provider) for domain,provider in available if domain==selected),None)
+            if not match: raise RuntimeError("Домен больше недоступен. Повторите /new.")
+            domain,provider=match
+        bid,address,lifetime=await create(c.from_user.id,c.from_user.username,provider,domain)
+        await c.message.answer(f"✅ <b>Почта создана</b>\n<code>{html.escape(address)}</code>\nСервис: {html.escape(provider)} · Срок: {lifetime//60} мин.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{bid}")],[InlineKeyboardButton(text="Мои почты",callback_data="mails")]]))
     except Exception as e:await c.message.answer("Ошибка: "+str(e))
     await c.answer()
 @dp.callback_query(F.data.startswith("timer:"))
