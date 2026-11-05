@@ -188,7 +188,7 @@ async def available_domain_sources():
     # Оставляем первый рабочий источник для каждого домена.
     unique={}
     for domain,source in found:
-        if re.fullmatch(r"[a-z0-9.-]+\\.[a-z]{2,}",domain):
+        if re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}",domain):
             unique.setdefault(domain,source)
     print("Total unique domains:",len(unique))
     return list(unique.items())
