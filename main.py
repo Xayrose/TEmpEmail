@@ -211,7 +211,7 @@ async def list_boxes(authorization:str|None=Header(default=None)):
 async def delete_box(box_id:int,authorization:str|None=Header(default=None)):
     u=user(authorization); b=await box_for(box_id,u["id"])
     with suppress(Exception):
-        if (b.get("provider") or "mailtm")=="mailtm": await mail("DELETE",f"/accounts/{b['api_id']}",b["token"])
+        if (b.get("provider") or "mailtm") in ("mailtm","mailgw"): await providers.delete(b.get("provider") or "mailtm",json.loads(b.get("provider_data") or "{}"),http)
     async with aiosqlite.connect(DB) as d:
         await d.execute("DELETE FROM seen WHERE inbox_id=?",(box_id,)); await d.execute("DELETE FROM inboxes WHERE id=?",(box_id,)); await d.commit()
     return {"ok":True}
