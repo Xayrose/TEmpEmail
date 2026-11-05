@@ -42,7 +42,7 @@ async def create(provider, name, domain, session):
         base = "https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm"
         ds = await hydra_domains(session, base)
         dom = __import__("secrets").choice(ds) if domain in ("", "random") else domain
-        if dom not in ds: raise ValueError("Домен Mail.tm недоступен")
+        if dom not in ds: raise ValueError(f"Домен {provider} недоступен")
         import secrets, string
         local = name or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))
         address = local + "@" + dom
