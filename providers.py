@@ -106,3 +106,5 @@ async def delete(provider, meta, session):
     if provider in ("mailtm","mailgw"):
         base=meta.get("base_url","https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm")
         await request(session,"DELETE",base+f"/accounts/{quote(str(meta['api_id']),safe='')}",headers={"Authorization":"Bearer "+meta["token"]})
+    elif provider=="guerrilla":
+        await request(session,"GET","https://api.guerrillamail.com/ajax.php",params={"f":"forget_me","email_addr":meta.get("address",""),"ip":"127.0.0.1","agent":"TEMPMAIL Telegram","sid_token":meta["sid"]},headers={"Cookie":"PHPSESSID="+meta["sid"]})
