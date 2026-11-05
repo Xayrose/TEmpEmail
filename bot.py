@@ -95,5 +95,17 @@ async def main():
         await d.execute("CREATE TABLE IF NOT EXISTS inboxes(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,address TEXT,password TEXT,token TEXT,api_id TEXT,expires INTEGER,created INTEGER)")
         await d.execute("CREATE TABLE IF NOT EXISTS seen(inbox_id INTEGER,message_id TEXT,PRIMARY KEY(inbox_id,message_id))");await d.commit()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25)) as s:
-        session=s;await dp.start_polling(bot)
-if __name__=="__main__":asyncio.run(main())
+        session=s
+        me=await bot.get_me()
+        print(f"Telegram bot authenticated: @{me.username}",flush=True)
+        await bot.delete_webhook(drop_pending_updates=False)
+        print("Telegram polling starting",flush=True)
+        await dp.start_polling(bot)
+if __name__=="__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    try:
+        asyncio.run(main())
+    except Exception:
+        logging.exception("Telegram bot stopped unexpectedly")
+        raise
