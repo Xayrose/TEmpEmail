@@ -14,12 +14,24 @@ POLL=int(os.getenv("POLL_INTERVAL","15"))
 os.makedirs(os.path.dirname(DB) or ".",exist_ok=True)
 http=None
 
+def members(data):
+    if isinstance(data,list): return data
+    if isinstance(data,dict):
+        for key in ("hydra:member","member","items","data"):
+            value=data.get(key)
+            if isinstance(value,list): return value
+    return []
+def sender_address(value):
+    if isinstance(value,dict): return value.get("address","?")
+    if isinstance(value,list) and value and isinstance(value[0],dict): return value[0].get("address","?")
+    return "?"
+
 async def mail(method,path,token=None,payload=None):
     headers={"Accept":"application/json"}
     if token: headers["Authorization"]="Bearer "+token
     async with http.request(method,"https://api.mail.tm"+path,json=payload,headers=headers) as r:
         data=await r.json(content_type=None) if r.status!=204 else {}
-        if r.status>=400: raise RuntimeError(str(data.get("detail") or data.get("message") or "Mail.tm error"))
+        if r.status>=400: raise RuntimeError(str((data.get("detail") or data.get("message")) if isinstance(data,dict) else data or "Mail.tm error"))
         return data
 
 async def init_db():
@@ -48,7 +60,7 @@ def user(authorization):
 
 async def domains():
     d=await mail("GET","/domains")
-    return [x["domain"] for x in d.get("hydra:member",[]) if x.get("isActive") and not x.get("isPrivate")]
+    return [x["domain"] for x in members(d) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False)]
 
 async def box_for(box_id,uid):
     async with aiosqlite.connect(DB) as d:
@@ -67,12 +79,12 @@ async def poller():
             for b in boxes:
                 try:
                     data=await mail("GET","/messages",b["token"])
-                    for m in data.get("hydra:member",[]):
+                    for m in members(data):
                         async with aiosqlite.connect(DB) as d:
                             c=await d.execute("INSERT OR IGNORE INTO seen VALUES(?,?)",(b["id"],m["id"])); await d.commit()
                             fresh=c.rowcount==1
                         if fresh:
-                            msg=f"✉️ Новое письмо\n{b['address']}\nОт: {m.get('from',{}).get('address','?')}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения."
+                            msg=f"✉️ Новое письмо\n{b['address']}\nОт: {sender_address(m.get('from'))}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения."
                             async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
                 except Exception as e: print("poll:",e)
                 await asyncio.sleep(.12)
@@ -151,7 +163,7 @@ async def delete_box(box_id:int,authorization:str|None=Header(default=None)):
 @app.get("/api/inboxes/{box_id}/messages")
 async def messages(box_id:int,authorization:str|None=Header(default=None)):
     u=user(authorization); b=await box_for(box_id,u["id"]); data=await mail("GET","/messages",b["token"])
-    return {"messages":[{"id":m["id"],"subject":m.get("subject") or "(без темы)","from":m.get("from",{}).get("address","?"),"intro":m.get("intro",""),"created":m.get("createdAt","")} for m in data.get("hydra:member",[])[:40]]}
+    return {"messages":[{"id":m["id"],"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"intro":m.get("intro",""),"created":m.get("createdAt","")} for m in members(data)[:40]]}
 @app.get("/api/inboxes/{box_id}/messages/{message_id}")
 async def read(box_id:int,message_id:str,authorization:str|None=Header(default=None)):
     u=user(authorization); b=await box_for(box_id,u["id"]); m=await mail("GET",f"/messages/{message_id}",b["token"])
