@@ -239,7 +239,7 @@ async def list_boxes(authorization:str|None=Header(default=None)):
     async with aiosqlite.connect(DB) as d:
         d.row_factory=aiosqlite.Row
         c=await d.execute("SELECT id,address,expires,created FROM inboxes WHERE user_id=? AND expires>? ORDER BY id DESC",(u["id"],int(time.time())))
-        return {"inboxes":[dict(x) for x in await c.fetchall()]}
+        return {"inboxes":[dict(x) for x in await c.fetchall()],"server_time":int(time.time())}
 @app.delete("/api/inboxes/{box_id}")
 async def delete_box(box_id:int,authorization:str|None=Header(default=None)):
     u=user(authorization); b=await box_for(box_id,u["id"])
