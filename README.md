@@ -6,7 +6,7 @@ Telegram temporary-email bot and Mini App powered by [Mail.tm](https://mail.tm/)
 
 - Telegram bot: create inboxes, choose a Mail.tm domain or random domain, list inboxes, view incoming messages and delete inboxes.
 - Telegram Mini App: responsive Apple-inspired Liquid Glass interface, inbox creation, address copy, message list and plain-text message reader.
-- FastAPI backend: Telegram Web App `initData` HMAC verification, inbox/message API, one-hour expiry, Telegram notifications for new messages and admin statistics endpoint.
+- FastAPI backend: Telegram Web App `initData` HMAC verification, inbox/message API, one-hour expiry, Telegram notifications for new messages and admin statistics endpoint. Admins also get a dashboard at `/static/admin.html`.
 - SQLite storage and Docker deployment.
 
 ## Deploy
@@ -56,7 +56,7 @@ Telegram Mini Apps require HTTPS. For local testing, expose the server through a
 - `GET /api/admin/stats` (admins only)
 - `GET /health`
 
-All Mini App API calls require valid Telegram `initData`. Configure `ADMIN_IDS` to allow admin statistics access.
+All Mini App API calls require valid Telegram `initData`. Configure `ADMIN_IDS` to allow admin statistics access. The Mini App shows a dashboard link to authorized admins; the dashboard is served at `/static/admin.html`.
 
 ## Important security and provider notes
 
