@@ -66,6 +66,14 @@ async def domains():
     d=await mail("GET","/domains")
     return [x["domain"] for x in members(d) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False)]
 
+def provider_meta(box):
+    try: meta=json.loads(box.get("provider_data") or "{}")
+    except (TypeError,ValueError): meta={}
+    # Compatibility with inboxes created by older Telegram bot versions.
+    if box.get("token"): meta.setdefault("token",box["token"])
+    if box.get("api_id"): meta.setdefault("api_id",box["api_id"])
+    return meta
+
 async def box_for(box_id,uid):
     async with aiosqlite.connect(DB) as d:
         d.row_factory=aiosqlite.Row
@@ -82,7 +90,7 @@ async def poller():
                 c=await d.execute("SELECT * FROM inboxes WHERE expires>?",(int(time.time()),)); boxes=[dict(x) for x in await c.fetchall()]
             for b in boxes:
                 try:
-                    meta=json.loads(b.get("provider_data") or "{}")
+                    meta=provider_meta(b)
                     items=await providers.messages(b.get("provider") or "mailtm",b["address"],meta,http)
                     async with aiosqlite.connect(DB) as d:
                         await d.execute("UPDATE inboxes SET provider_data=? WHERE id=?",(json.dumps(meta),b["id"])); await d.commit()
@@ -106,7 +114,7 @@ async def cleanup():
                 c=await d.execute("SELECT * FROM inboxes WHERE expires<=?",(int(time.time()),)); rows=[dict(x) for x in await c.fetchall()]
             for b in rows:
                 with suppress(Exception):
-                    if (b.get("provider") or "mailtm") in ("mailtm","mailgw"): await providers.delete(b.get("provider") or "mailtm",json.loads(b.get("provider_data") or "{}"),http)
+                    if (b.get("provider") or "mailtm") in ("mailtm","mailgw"): await providers.delete(b.get("provider") or "mailtm",provider_meta(b),http)
                 async with aiosqlite.connect(DB) as d:
                     await d.execute("DELETE FROM seen WHERE inbox_id=?",(b["id"],)); await d.execute("DELETE FROM inboxes WHERE id=?",(b["id"],)); await d.commit()
                 with suppress(Exception):
@@ -242,12 +250,12 @@ async def delete_box(box_id:int,authorization:str|None=Header(default=None)):
     return {"ok":True}
 @app.get("/api/inboxes/{box_id}/messages")
 async def messages(box_id:int,authorization:str|None=Header(default=None)):
-    u=user(authorization); b=await box_for(box_id,u["id"]); meta=json.loads(b.get("provider_data") or "{}"); items=await providers.messages(b.get("provider") or "mailtm",b["address"],meta,http)
+    u=user(authorization); b=await box_for(box_id,u["id"]); meta=provider_meta(b); items=await providers.messages(b.get("provider") or "mailtm",b["address"],meta,http)
     async with aiosqlite.connect(DB) as d: await d.execute("UPDATE inboxes SET provider_data=? WHERE id=?",(json.dumps(meta),box_id)); await d.commit()
     return {"messages":items[:40]}
 @app.get("/api/inboxes/{box_id}/messages/{message_id}")
 async def read(box_id:int,message_id:str,authorization:str|None=Header(default=None)):
-    u=user(authorization); b=await box_for(box_id,u["id"]); meta=json.loads(b.get("provider_data") or "{}"); return await providers.read(b.get("provider") or "mailtm",b["address"],meta,message_id,http)
+    u=user(authorization); b=await box_for(box_id,u["id"]); meta=provider_meta(b); return await providers.read(b.get("provider") or "mailtm",b["address"],meta,message_id,http)
 @app.get("/api/admin/stats")
 async def stats(authorization:str|None=Header(default=None)):
     u=user(authorization)
