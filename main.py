@@ -94,7 +94,7 @@ async def poller():
                             msg=(f"✉️ Новое письмо\n{b['address']}\nОт: {m.get('from') or '?'}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения.")
                             async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
                 except Exception as e: print("poll:",e)
-                await asyncio.sleep(31 if (b.get("provider")=="besttempmail") else (1.05 if (b.get("provider")=="catchmail") else .12))
+                await asyncio.sleep(31 if (b.get("provider")=="besttempmail") else (1.05 if (b.get("provider")=="catchmail") else (.15 if b.get("provider")=="mailgw" else .12)))
         except Exception as e: print("poller:",e)
         await asyncio.sleep(POLL)
 
@@ -106,7 +106,7 @@ async def cleanup():
                 c=await d.execute("SELECT * FROM inboxes WHERE expires<=?",(int(time.time()),)); rows=[dict(x) for x in await c.fetchall()]
             for b in rows:
                 with suppress(Exception):
-                    if (b.get("provider") or "mailtm")=="mailtm": await mail("DELETE",f"/accounts/{b['api_id']}",b["token"])
+                    if (b.get("provider") or "mailtm") in ("mailtm","mailgw"): await providers.delete(b.get("provider") or "mailtm",json.loads(b.get("provider_data") or "{}"),http)
                 async with aiosqlite.connect(DB) as d:
                     await d.execute("DELETE FROM seen WHERE inbox_id=?",(b["id"],)); await d.execute("DELETE FROM inboxes WHERE id=?",(b["id"],)); await d.commit()
                 with suppress(Exception):
@@ -137,7 +137,15 @@ async def me(authorization:str|None=Header(default=None)):
 @app.get("/api/providers")
 async def get_providers(authorization:str|None=Header(default=None)):
     user(authorization)
-    return {"providers":[{"id":"mailtm","name":"Mail.tm"},{"id":"1secmail","name":"1secmail"},{"id":"besttempmail","name":"Best-TempMail"},{"id":"guerrilla","name":"Guerrilla Mail"},{"id":"catchmail","name":"Catchmail"}]}
+    return {"providers":[{"id":"mailtm","name":"Mail.tm"},{"id":"mailgw","name":"Mail.gw"},{"id":"1secmail","name":"1secmail"},{"id":"besttempmail","name":"Best-TempMail"},{"id":"guerrilla","name":"Guerrilla Mail"},{"id":"catchmail","name":"Catchmail"}]}
+def providers_members(data):
+    if isinstance(data,list): return data
+    if isinstance(data,dict):
+        for key in ("hydra:member","member","items","data"):
+            value=data.get(key)
+            if isinstance(value,list): return value
+    return []
+
 async def available_domain_sources():
     found=[]
     try:
@@ -149,6 +157,11 @@ async def available_domain_sources():
         found.extend((x.lstrip("@"),"1secmail") for x in data if isinstance(x,str) and x.strip())
     except Exception as e:
         print("1secmail domains:",e)
+    try:
+        data,_=await providers.request(http,"GET","https://api.mail.gw/domains")
+        found.extend((x["domain"],"mailgw") for x in providers_members(data) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False))
+    except Exception as e:
+        print("Mail.gw domains:",e)
     # Сохраняем реальный источник каждого домена; при совпадении предпочитаем Mail.tm.
     unique={}
     for domain,source in found:
