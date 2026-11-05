@@ -94,7 +94,7 @@ async def poller():
                             msg=(f"✉️ Новое письмо\n{b['address']}\nОт: {m.get('from') or '?'}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения.")
                             async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
                 except Exception as e: print("poll:",e)
-                await asyncio.sleep(1.05 if (b.get("provider")=="catchmail") else .12)
+                await asyncio.sleep(31 if (b.get("provider")=="besttempmail") else (1.05 if (b.get("provider")=="catchmail") else .12))
         except Exception as e: print("poller:",e)
         await asyncio.sleep(POLL)
 
