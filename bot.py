@@ -1,4 +1,5 @@
-import os, asyncio, secrets, string, time
+import os, asyncio, secrets, string, time, json, html
+import providers
 import aiohttp, aiosqlite
 from aiogram import Bot,Dispatcher,F
 from aiogram.filters import CommandStart,Command
@@ -50,7 +51,8 @@ async def create(uid,username,domain):
     address="".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))+"@"+domain; password=secrets.token_urlsafe(28)
     account=await req("POST","/accounts",payload={"address":address,"password":password}); auth=await req("POST","/token",payload={"address":address,"password":password}); now=int(time.time())
     async with aiosqlite.connect(DB) as d:
-        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created) VALUES(?,?,?,?,?,?,?,?)",(uid,username,address,password,auth["token"],account["id"],now+3600,now));await d.commit();return c.lastrowid,address
+        meta={"token":auth["token"],"api_id":account["id"],"password":password,"base_url":API}
+        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(uid,username,address,password,auth["token"],account["id"],now+3600,now,"mailtm",json.dumps(meta)));await d.commit();return c.lastrowid,address
 async def getboxes(uid):
     async with aiosqlite.connect(DB) as d:
         d.row_factory=aiosqlite.Row;c=await d.execute("SELECT id,address,expires FROM inboxes WHERE user_id=? AND expires>?",(uid,int(time.time())));return [dict(x) for x in await c.fetchall()]
@@ -96,24 +98,44 @@ async def open_cb(c):
     b=await getbox(int(c.data.split(":")[1]),c.from_user.id)
     if not b or b["expires"]<=int(time.time()):await c.answer("Почта истекла",show_alert=True);return
     try:
-        d=await req("GET","/messages",b["token"]);items=members(d)
-        if not items:await c.message.answer("📭 Входящих пока нет.")
-        for x in items[:10]:await c.message.answer(f"✉️ <b>{x.get('subject') or '(без темы)'}</b>\nОт: {sender_address(x.get('from'))}\n\n{x.get('intro','')[:250]}",parse_mode="HTML")
-    except Exception as e:await c.message.answer("Ошибка: "+str(e))
+        meta={}
+        try: meta=json.loads(b.get("provider_data") or "{}")
+        except (TypeError,ValueError): pass
+        if b.get("token"): meta.setdefault("token",b["token"])
+        if b.get("api_id"): meta.setdefault("api_id",b["api_id"])
+        items=await providers.messages(b.get("provider") or "mailtm",b["address"],meta,session)
+        async with aiosqlite.connect(DB) as d:
+            await d.execute("UPDATE inboxes SET provider_data=? WHERE id=?",(json.dumps(meta),b["id"]))
+            await d.commit()
+        if not items: await c.message.answer("📭 Входящих пока нет.")
+        for x in items[:10]:
+            subject=html.escape(str(x.get("subject") or "(без темы)"))
+            sender=html.escape(str(x.get("from") or "?"))
+            intro=html.escape(str(x.get("intro") or "")[:250])
+            await c.message.answer(f"✉️ <b>{subject}</b>\\nОт: {sender}\\n\\n{intro}",parse_mode="HTML")
+    except Exception as e: await c.message.answer("Ошибка: "+html.escape(str(e)))
     await c.answer()
 @dp.callback_query(F.data.startswith("del:"))
 async def del_cb(c):
     b=await getbox(int(c.data.split(":")[1]),c.from_user.id)
     if b:
-        try:await req("DELETE",f"/accounts/{b['api_id']}",b["token"])
-        except Exception:pass
+        meta={}
+        try: meta=json.loads(b.get("provider_data") or "{}")
+        except (TypeError,ValueError): pass
+        if b.get("token"): meta.setdefault("token",b["token"])
+        if b.get("api_id"): meta.setdefault("api_id",b["api_id"])
+        try: await providers.delete(b.get("provider") or "mailtm",meta,session)
+        except Exception: pass
         async with aiosqlite.connect(DB) as d:await d.execute("DELETE FROM seen WHERE inbox_id=?",(b["id"],));await d.execute("DELETE FROM inboxes WHERE id=?",(b["id"],));await d.commit()
     await c.answer("Удалено");await show_boxes(c.message.chat.id,c.from_user.id)
 async def main():
     global session
     os.makedirs(os.path.dirname(DB) or ".",exist_ok=True)
     async with aiosqlite.connect(DB) as d:
-        await d.execute("CREATE TABLE IF NOT EXISTS inboxes(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,address TEXT,password TEXT,token TEXT,api_id TEXT,expires INTEGER,created INTEGER)")
+        await d.execute("CREATE TABLE IF NOT EXISTS inboxes(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,address TEXT,password TEXT,token TEXT,api_id TEXT,expires INTEGER,created INTEGER,provider TEXT DEFAULT 'mailtm',provider_data TEXT DEFAULT '{}')")
+        cols={r[1] for r in await (await d.execute("PRAGMA table_info(inboxes)")).fetchall()}
+        if "provider" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider TEXT DEFAULT 'mailtm'")
+        if "provider_data" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider_data TEXT DEFAULT '{}'")
         await d.execute("CREATE TABLE IF NOT EXISTS seen(inbox_id INTEGER,message_id TEXT,PRIMARY KEY(inbox_id,message_id))");await d.commit()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25)) as s:
         session=s
