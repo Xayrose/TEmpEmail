@@ -16,38 +16,6 @@
 .bottom{position:fixed;z-index:4;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(560px,calc(100% - 32px));display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:7px;border-radius:28px;border:1px solid var(--line);background:rgba(35,36,40,.78);box-shadow:0 12px 40px #0009,inset 0 1px rgba(255,255,255,.12);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px)}.bottom a{padding:12px 6px;border-radius:22px;text-align:center;text-decoration:none;color:var(--muted);font-size:12px;font-weight:550}.bottom a.active{background:rgba(255,255,255,.1);color:var(--text)}.tab-page{display:none}.tab-page.active{display:block}.bottom span{display:block;font-size:19px;margin-bottom:4px}
 @media(min-width:600px){body{padding-top:35px}.top{margin-bottom:32px}}
 
-/* Refined visual system */
-:root{--line:rgba(169,157,255,.22);--text:#f7f5ff;--muted:#aaa6c4;--accent:#a78bfa;--accent2:#67e8f9}
-body{background:radial-gradient(ellipse at 12% 0%,rgba(124,58,237,.24),transparent 38%),radial-gradient(ellipse at 100% 24%,rgba(14,165,233,.13),transparent 34%),linear-gradient(160deg,#0b0b19 0%,#101126 48%,#080914 100%)}
-.top{border-color:rgba(167,139,250,.28);background:linear-gradient(120deg,rgba(124,58,237,.22),rgba(30,41,80,.52));box-shadow:inset 0 1px rgba(255,255,255,.14),0 14px 40px #02020b88}
-.brand{background:linear-gradient(90deg,#fff,#c4b5fd 65%,#67e8f9);background-clip:text;-webkit-background-clip:text;color:transparent}
-.pill{color:#c4b5fd}
-.glass{border-color:rgba(167,139,250,.2);background:linear-gradient(145deg,rgba(34,31,68,.78),rgba(17,20,43,.72));box-shadow:inset 0 1px rgba(255,255,255,.1),0 18px 48px #02020b66}
-.hero{position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:180px;height:180px;right:-85px;top:-95px;border-radius:50%;background:#8b5cf633;filter:blur(10px);pointer-events:none}
-.eyebrow{color:#aaa6d1}.address{color:#fff;text-shadow:0 0 25px #a78bfa22}
-.btn{border-color:rgba(167,139,250,.25);background:linear-gradient(145deg,rgba(139,92,246,.16),rgba(59,130,246,.08));color:#f6f3ff}
-.btn:hover{background:linear-gradient(145deg,rgba(139,92,246,.3),rgba(59,130,246,.17))}
-.primary{background:linear-gradient(110deg,#7c3aed,#4f46e5 58%,#0891b2);border:0;box-shadow:0 8px 24px #4f46e544,inset 0 1px #ffffff44}
-.section-head h2{color:#f4f0ff}.count{color:#b9b1e5}
-.mail,.box{border-color:rgba(167,139,250,.17);background:linear-gradient(110deg,rgba(139,92,246,.09),rgba(56,189,248,.045));transition:transform .18s,border-color .18s}
-.mail:hover,.box:hover{transform:translateY(-1px);border-color:rgba(167,139,250,.4)}
-.mail-icon{background:linear-gradient(145deg,#6d28d9,#2563eb);color:white;box-shadow:0 5px 18px #4f46e544}
-.modal{background:rgba(4,5,18,.78);backdrop-filter:blur(18px)}
-.sheet{background:linear-gradient(145deg,#1b1a38,#11152b);border-color:rgba(167,139,250,.3);box-shadow:0 24px 90px #02020bcc}
-.domain{background:linear-gradient(110deg,rgba(124,58,237,.15),rgba(37,99,235,.09));border-color:rgba(167,139,250,.2);color:#f6f3ff;transition:.18s}
-.domain:hover{border-color:#a78bfa;background:linear-gradient(110deg,rgba(124,58,237,.3),rgba(37,99,235,.2))}
-.domain.random{background:linear-gradient(110deg,#6d28d9,#4338ca 60%,#0e7490);border:0;color:#fff;box-shadow:0 8px 24px #4f46e544}
-.field{background:rgba(8,10,30,.72);border-color:rgba(167,139,250,.28);color:#fff}
-.field:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #8b5cf622}
-.field option{background:#171633;color:white}
-.toast{background:linear-gradient(100deg,#ede9fe,#cffafe);color:#211443;box-shadow:0 8px 30px #02020b66}
-.bottom{background:rgba(19,19,43,.82);border-color:rgba(167,139,250,.25);box-shadow:0 12px 40px #02020baa,inset 0 1px rgba(255,255,255,.12)}
-.bottom a{color:#a8a4c7;transition:.18s}.bottom a.active{background:linear-gradient(110deg,rgba(124,58,237,.35),rgba(37,99,235,.25));color:#fff;box-shadow:inset 0 1px rgba(255,255,255,.1)}
-.tab-page.active{animation:pageIn .24s ease-out}@keyframes pageIn{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:none}}
-#tab-about .glass{background:linear-gradient(145deg,rgba(47,35,91,.72),rgba(17,26,54,.8))}
-#tab-about h2{color:#fff}
-.hint{color:#b9b6d2}
-@media(max-width:390px){body{padding-left:12px;padding-right:12px}.top{padding:0 14px}.bottom{width:calc(100% - 24px)}}
 </style></head><body><main class="wrap" id="home"><section id="tab-home" class="tab-page active"><header class="top"><div class="brand">TEMPMAIL</div><div class="pill">ВРЕМЕННАЯ ПОЧТА</div></header>
 <section class="glass hero"><div class="eyebrow">ТЕКУЩИЙ АДРЕС</div><div class="address" id="address">Создайте временную почту</div><div class="actions"><button class="btn secondary" onclick="copyAddress()">Копировать</button><button class="btn primary wide" onclick="openCreate()">＋ Создать почту</button></div></section>
 <section class="glass" style="margin-top:18px;padding:17px 10px;display:grid;grid-template-columns:repeat(3,1fr);text-align:center"><div><div class="eyebrow">ПИСЬМА</div><div id="count" style="font-size:19px;font-weight:650;margin-top:7px">0</div></div><div style="border-left:1px solid var(--line);border-right:1px solid var(--line)"><div class="eyebrow">ОСТАЛОСЬ</div><div class="timer" id="timer" style="font-size:19px;margin-top:7px">60:00</div></div><div><div class="eyebrow">СТАТУС</div><div id="total" style="font-size:13px;font-weight:600;margin-top:10px">Нет адреса</div></div></section></section>
