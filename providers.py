@@ -54,7 +54,7 @@ async def create(provider, name, domain, session):
         import secrets, string
         local = name or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))
         ds, _ = await request(session,"GET","https://www.1secmail.com/api/v1/",params={"action":"getDomainList"})
-        ds = [x.lstrip("@") for x in ds if isinstance(x,str)]
+        ds = [x.strip().lower().lstrip("@") for x in ds if isinstance(x,str) and x.strip()]
         dom = secrets.choice(ds) if domain in ("","random") else domain
         if dom not in ds: raise ValueError("Домен 1secmail недоступен")
         return local+"@"+dom, {"login":local,"domain":dom}, 3600
