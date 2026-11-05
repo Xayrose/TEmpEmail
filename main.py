@@ -46,7 +46,8 @@ def verify(raw):
         p=dict(parse_qsl(raw,keep_blank_values=True)); received=p.pop("hash")
         stamp=int(p.get("auth_date","0"))
         if abs(int(time.time())-stamp)>86400: raise ValueError()
-        check="\n".join(f"{k}={v}" for k,v in sorted(p.items()))
+        check="
+".join(f"{k}={v}" for k,v in sorted(p.items()))
         secret=hmac.new(b"WebAppData",BOT_TOKEN.encode(),hashlib.sha256).digest()
         expected=hmac.new(secret,check.encode(),hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected,received): raise ValueError()
@@ -84,7 +85,13 @@ async def poller():
                             c=await d.execute("INSERT OR IGNORE INTO seen VALUES(?,?)",(b["id"],m["id"])); await d.commit()
                             fresh=c.rowcount==1
                         if fresh:
-                            msg=f"✉️ Новое письмо\n{b['address']}\nОт: {sender_address(m.get('from'))}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения."
+                            msg=f"✉️ Новое письмо
+{b['address']}
+От: {sender_address(m.get('from'))}
+Тема: {m.get('subject') or '(без темы)'}
+
+{m.get('intro','')[:600]}
+Откройте Mini App для чтения."
                             async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
                 except Exception as e: print("poll:",e)
                 await asyncio.sleep(.12)
@@ -131,14 +138,18 @@ async def get_domains(authorization:str|None=Header(default=None)):
     user(authorization)
     try: return {"domains":await domains()}
     except Exception as e: raise HTTPException(502,str(e))
-class Create(BaseModel):\n    domain:str="random"\n    name:str=""
+class Create(BaseModel):
+    domain:str="random"
+    name:str=""
 @app.post("/api/inboxes")
 async def create(req:Create,authorization:str|None=Header(default=None)):
     u=user(authorization); ds=await domains()
     if not ds: raise HTTPException(502,"Нет доступных доменов")
     domain=secrets.choice(ds) if req.domain=="random" else req.domain
     if domain not in ds: raise HTTPException(400,"Домен недоступен")
-    name=req.name.strip().lower() or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))\n    if not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Имя: 1–40 символов, латинские буквы, цифры, точка, дефис или подчёркивание")\n    address=name+"@"+domain
+    name=req.name.strip().lower() or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))
+    if not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Имя: 1–40 символов, латинские буквы, цифры, точка, дефис или подчёркивание")
+    address=name+"@"+domain
     password=secrets.token_urlsafe(28)
     account=await mail("POST","/accounts",payload={"address":address,"password":password})
     auth=await mail("POST","/token",payload={"address":address,"password":password})
