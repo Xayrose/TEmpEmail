@@ -71,7 +71,7 @@ async def create(provider, name, domain, session):
         if name:
             changed,_=await request(session,"GET","https://api.guerrillamail.com/ajax.php",params={"f":"set_email_user","email_user":name,"lang":"en","ip":"127.0.0.1","agent":"TEMPMAIL Telegram","sid_token":sid},headers={"Cookie":"PHPSESSID="+sid})
             if changed.get("email_addr"): data=changed
-        return data["email_addr"], {"sid":sid,"seq":0}, 3600
+        return data["email_addr"], {"sid":sid,"seq":0,"address":data["email_addr"]}, 3600
     raise ValueError("Неизвестный почтовый сервис")
 
 async def messages(provider,address,meta,session):
