@@ -102,7 +102,7 @@ async def poller():
                             msg=(f"✉️ Новое письмо\n{b['address']}\nОт: {m.get('from') or '?'}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения.")
                             async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
                 except Exception as e: print("poll:",e)
-                await asyncio.sleep(31 if (b.get("provider")=="besttempmail") else (1.05 if (b.get("provider")=="catchmail") else (.15 if b.get("provider")=="mailgw" else .12)))
+                await asyncio.sleep(30 if b.get("provider")=="guerrilla" else (10 if b.get("provider")=="1secmail" else 2))
         except Exception as e: print("poller:",e)
         await asyncio.sleep(POLL)
 
@@ -145,7 +145,7 @@ async def me(authorization:str|None=Header(default=None)):
 @app.get("/api/providers")
 async def get_providers(authorization:str|None=Header(default=None)):
     user(authorization)
-    return {"providers":[{"id":"mailtm","name":"Mail.tm"},{"id":"mailgw","name":"Mail.gw"},{"id":"1secmail","name":"1secmail"},{"id":"besttempmail","name":"Best-TempMail"},{"id":"guerrilla","name":"Guerrilla Mail"},{"id":"catchmail","name":"Catchmail"}]}
+    return {"providers":[{"id":"mailtm","name":"Mail.tm"},{"id":"mailgw","name":"Mail.gw"},{"id":"1secmail","name":"1secmail"},{"id":"guerrilla","name":"Guerrilla Mail"}]}
 def providers_members(data):
     if isinstance(data,list): return data
     if isinstance(data,dict):
