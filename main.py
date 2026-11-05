@@ -105,7 +105,8 @@ async def cleanup():
                 d.row_factory=aiosqlite.Row
                 c=await d.execute("SELECT * FROM inboxes WHERE expires<=?",(int(time.time()),)); rows=[dict(x) for x in await c.fetchall()]
             for b in rows:
-                with suppress(Exception): await mail("DELETE",f"/accounts/{b['api_id']}",b["token"])
+                with suppress(Exception):
+                    if (b.get("provider") or "mailtm")=="mailtm": await mail("DELETE",f"/accounts/{b['api_id']}",b["token"])
                 async with aiosqlite.connect(DB) as d:
                     await d.execute("DELETE FROM seen WHERE inbox_id=?",(b["id"],)); await d.execute("DELETE FROM inboxes WHERE id=?",(b["id"],)); await d.commit()
                 with suppress(Exception):
@@ -177,7 +178,8 @@ async def list_boxes(authorization:str|None=Header(default=None)):
 @app.delete("/api/inboxes/{box_id}")
 async def delete_box(box_id:int,authorization:str|None=Header(default=None)):
     u=user(authorization); b=await box_for(box_id,u["id"])
-    with suppress(Exception): await mail("DELETE",f"/accounts/{b['api_id']}",b["token"])
+    with suppress(Exception):
+        if (b.get("provider") or "mailtm")=="mailtm": await mail("DELETE",f"/accounts/{b['api_id']}",b["token"])
     async with aiosqlite.connect(DB) as d:
         await d.execute("DELETE FROM seen WHERE inbox_id=?",(box_id,)); await d.execute("DELETE FROM inboxes WHERE id=?",(box_id,)); await d.commit()
     return {"ok":True}
