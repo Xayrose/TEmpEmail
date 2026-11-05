@@ -1,4 +1,4 @@
-import os, time, json, hmac, hashlib, secrets, string, asyncio
+import os, time, json, hmac, hashlib, secrets, string, asyncio, re
 from urllib.parse import parse_qsl
 from contextlib import asynccontextmanager, suppress
 import aiohttp, aiosqlite
@@ -131,14 +131,14 @@ async def get_domains(authorization:str|None=Header(default=None)):
     user(authorization)
     try: return {"domains":await domains()}
     except Exception as e: raise HTTPException(502,str(e))
-class Create(BaseModel): domain:str="random"
+class Create(BaseModel):\n    domain:str="random"\n    name:str=""
 @app.post("/api/inboxes")
 async def create(req:Create,authorization:str|None=Header(default=None)):
     u=user(authorization); ds=await domains()
     if not ds: raise HTTPException(502,"Нет доступных доменов")
     domain=secrets.choice(ds) if req.domain=="random" else req.domain
     if domain not in ds: raise HTTPException(400,"Домен недоступен")
-    address="".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))+"@"+domain
+    name=req.name.strip().lower() or "".join(secrets.choice(string.ascii_lowercase+string.digits) for _ in range(13))\n    if not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Имя: 1–40 символов, латинские буквы, цифры, точка, дефис или подчёркивание")\n    address=name+"@"+domain
     password=secrets.token_urlsafe(28)
     account=await mail("POST","/accounts",payload={"address":address,"password":password})
     auth=await mail("POST","/token",payload={"address":address,"password":password})
@@ -168,7 +168,7 @@ async def messages(box_id:int,authorization:str|None=Header(default=None)):
 async def read(box_id:int,message_id:str,authorization:str|None=Header(default=None)):
     u=user(authorization); b=await box_for(box_id,u["id"]); m=await mail("GET",f"/messages/{message_id}",b["token"])
     with suppress(Exception): await mail("PATCH",f"/messages/{message_id}",b["token"])
-    return {"id":m["id"],"subject":m.get("subject") or "(без темы)","from":m.get("from",{}).get("address","?"),"created":m.get("createdAt",""),"text":m.get("text") or "Нет текстовой версии письма."}
+    return {"id":m["id"],"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"created":m.get("createdAt",""),"text":m.get("text") or "Нет текстовой версии письма."}
 @app.get("/api/admin/stats")
 async def stats(authorization:str|None=Header(default=None)):
     u=user(authorization)
