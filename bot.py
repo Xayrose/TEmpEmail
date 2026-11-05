@@ -11,6 +11,17 @@ if URL and URL.startswith("https://") and "." not in URL.split("://",1)[1].split
 URL=URL.rstrip("/")+"/" if URL else URL; DB=os.getenv("DB_PATH","data/tempmail.sqlite3")
 if not TOKEN: raise RuntimeError("Set BOT_TOKEN in .env")
 API="https://api.mail.tm"; bot=Bot(TOKEN); dp=Dispatcher(); session=None
+def members(data):
+    if isinstance(data,list): return data
+    if isinstance(data,dict):
+        for key in ("hydra:member","member","items","data"):
+            value=data.get(key)
+            if isinstance(value,list): return value
+    return []
+def sender_address(value):
+    if isinstance(value,dict): return value.get("address","?")
+    if isinstance(value,list) and value and isinstance(value[0],dict): return value[0].get("address","?")
+    return "?"
 def home():
     rows=[]
     if URL.startswith("https://"): rows.append([InlineKeyboardButton(text="Открыть Mini App",web_app=WebAppInfo(url=URL))])
@@ -21,10 +32,10 @@ async def req(method,path,token=None,payload=None):
     if token:h["Authorization"]="Bearer "+token
     async with session.request(method,API+path,json=payload,headers=h) as r:
         d=await r.json(content_type=None) if r.status!=204 else {}
-        if r.status>=400:raise RuntimeError(str(d.get("detail") or d.get("message") or "Mail.tm error"))
+        if r.status>=400:raise RuntimeError(str((d.get("detail") or d.get("message")) if isinstance(d,dict) else d or "Mail.tm error"))
         return d
 async def domains():
-    d=await req("GET","/domains");return [x["domain"] for x in d.get("hydra:member",[]) if x.get("isActive") and not x.get("isPrivate")]
+    d=await req("GET","/domains");return [x["domain"] for x in members(d) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False)]
 async def create(uid,username,domain):
     ds=await domains();domain=secrets.choice(ds) if domain=="random" else domain
     if domain not in ds:raise RuntimeError("Домен недоступен")
@@ -77,9 +88,9 @@ async def open_cb(c):
     b=await getbox(int(c.data.split(":")[1]),c.from_user.id)
     if not b or b["expires"]<=int(time.time()):await c.answer("Почта истекла",show_alert=True);return
     try:
-        d=await req("GET","/messages",b["token"]);items=d.get("hydra:member",[])
+        d=await req("GET","/messages",b["token"]);items=members(d)
         if not items:await c.message.answer("📭 Входящих пока нет.")
-        for x in items[:10]:await c.message.answer(f"✉️ <b>{x.get('subject') or '(без темы)'}</b>\nОт: {x.get('from',{}).get('address','?')}\n\n{x.get('intro','')[:250]}",parse_mode="HTML")
+        for x in items[:10]:await c.message.answer(f"✉️ <b>{x.get('subject') or '(без темы)'}</b>\nОт: {sender_address(x.get('from'))}\n\n{x.get('intro','')[:250]}",parse_mode="HTML")
     except Exception as e:await c.message.answer("Ошибка: "+str(e))
     await c.answer()
 @dp.callback_query(F.data.startswith("del:"))
