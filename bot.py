@@ -27,15 +27,23 @@ def home():
     if URL.startswith("https://"): rows.append([InlineKeyboardButton(text="Открыть Mini App",web_app=WebAppInfo(url=URL))])
     rows += [[InlineKeyboardButton(text="＋ Создать почту",callback_data="new")],[InlineKeyboardButton(text="▤ Мои почты",callback_data="mails")]]
     return InlineKeyboardMarkup(inline_keyboard=rows)
-async def req(method,path,token=None,payload=None):
+async def req(method,path,token=None,payload=None,params=None):
     h={"Accept":"application/json"}
     if token:h["Authorization"]="Bearer "+token
-    async with session.request(method,API+path,json=payload,headers=h) as r:
+    async with session.request(method,API+path,json=payload,params=params,headers=h) as r:
         d=await r.json(content_type=None) if r.status!=204 else {}
         if r.status>=400:raise RuntimeError(str((d.get("detail") or d.get("message")) if isinstance(d,dict) else d or "Mail.tm error"))
         return d
 async def domains():
-    d=await req("GET","/domains");return [x["domain"] for x in members(d) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False)]
+    found=[]
+    for page in range(1,21):
+        d=await req("GET","/domains",params={"page":page})
+        items=members(d)
+        found.extend(x["domain"].strip().lower() for x in items if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False))
+        try: total=int(d.get("hydra:totalItems")) if isinstance(d,dict) else None
+        except (TypeError,ValueError): total=None
+        if not items or (total is not None and len(found)>=total): break
+    return list(dict.fromkeys(found))
 async def create(uid,username,domain):
     ds=await domains();domain=secrets.choice(ds) if domain=="random" else domain
     if domain not in ds:raise RuntimeError("Домен недоступен")
