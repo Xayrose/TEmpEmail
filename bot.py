@@ -70,8 +70,8 @@ async def show_boxes(chat,uid):
     if not xs:await bot.send_message(chat,"Активных почт пока нет.",reply_markup=home());return
     for x in xs:
         left=max(0,x["expires"]-int(time.time()))
-        kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{x['id']}"),InlineKeyboardButton(text="Удалить",callback_data=f"del:{x['id']}")]])
-        await bot.send_message(chat,f"📮 <code>{x['address']}</code>\nОсталось: <b>{left//60:02d}:{left%60:02d}</b>",parse_mode="HTML",reply_markup=kb)
+        kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{x['id']}"),InlineKeyboardButton(text="Обновить таймер",callback_data=f"timer:{x['id']}")],[InlineKeyboardButton(text="Удалить",callback_data=f"del:{x['id']}")]])
+        await bot.send_message(chat,f"📮 <code>{html.escape(x['address'])}</code>\nОсталось: <b>{left//60:02d}:{left%60:02d}</b>",parse_mode="HTML",reply_markup=kb)
 @dp.message(CommandStart())
 async def start(m:Message):await m.answer("✉️ <b>TEMPMAIL</b>\nВременная почта на 60 минут.",parse_mode="HTML",reply_markup=home())
 @dp.message(Command("app"))
@@ -93,6 +93,17 @@ async def domain_cb(c):
         await c.message.answer(f"✅ <b>Почта создана</b>\n<code>{address}</code>\nСрок действия: 60 минут.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{bid}")],[InlineKeyboardButton(text="Мои почты",callback_data="mails")]]))
     except Exception as e:await c.message.answer("Ошибка: "+str(e))
     await c.answer()
+@dp.callback_query(F.data.startswith("timer:"))
+async def timer_cb(c):
+    b=await getbox(int(c.data.split(":")[1]),c.from_user.id)
+    if not b or b["expires"]<=int(time.time()):
+        await c.answer("Срок почты истёк",show_alert=True)
+        return
+    left=max(0,b["expires"]-int(time.time()))
+    text=f"📮 <code>{html.escape(b['address'])}</code>\\nОсталось: <b>{left//60:02d}:{left%60:02d}</b>"
+    kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{b['id']}"),InlineKeyboardButton(text="Обновить таймер",callback_data=f"timer:{b['id']}")],[InlineKeyboardButton(text="Удалить",callback_data=f"del:{b['id']}")]])
+    await c.message.edit_text(text,parse_mode="HTML",reply_markup=kb)
+    await c.answer("Таймер обновлён")
 @dp.callback_query(F.data.startswith("open:"))
 async def open_cb(c):
     b=await getbox(int(c.data.split(":")[1]),c.from_user.id)
