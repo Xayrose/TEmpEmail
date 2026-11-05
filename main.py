@@ -146,26 +146,51 @@ def providers_members(data):
             if isinstance(value,list): return value
     return []
 
+async def hydra_domain_list(base_url, source):
+    # Mail.tm/Mail.gw отдаёт до 30 доменов на страницу.
+    result=[]
+    page=1
+    total=None
+    while page<=20:
+        data,_=await providers.request(http,"GET",base_url+"/domains",params={"page":page})
+        items=providers_members(data)
+        for item in items:
+            if not isinstance(item,dict): continue
+            domain=str(item.get("domain") or "").strip().lower().lstrip("@")
+            if domain and item.get("isActive",True) and not item.get("isPrivate",False):
+                result.append(domain)
+        if isinstance(data,dict):
+            try: total=int(data.get("hydra:totalItems"))
+            except (TypeError,ValueError): pass
+        if not items or (total is not None and len(result)>=total):
+            break
+        page+=1
+    print(f"{source} domains: {len(result)}")
+    return result
+
 async def available_domain_sources():
     found=[]
-    try:
-        found.extend((d,"mailtm") for d in await domains())
-    except Exception as e:
-        print("Mail.tm domains:",e)
+    # Каждый источник обрабатывается независимо: сбой одного не блокирует остальные.
+    for source,base in (("mailtm","https://api.mail.tm"),("mailgw","https://api.mail.gw")):
+        try:
+            found.extend((d,source) for d in await hydra_domain_list(base,source))
+        except Exception as e:
+            print(f"{source} domains error:",e)
     try:
         data,_=await providers.request(http,"GET","https://www.1secmail.com/api/v1/",params={"action":"getDomainList"})
-        found.extend((x.lstrip("@"),"1secmail") for x in data if isinstance(x,str) and x.strip())
+        if isinstance(data,dict):
+            data=data.get("domains") or data.get("data") or []
+        domains_1s=[str(x).strip().lower().lstrip("@") for x in data if isinstance(x,str) and x.strip()] if isinstance(data,list) else []
+        print(f"1secmail domains: {len(domains_1s)}")
+        found.extend((d,"1secmail") for d in domains_1s)
     except Exception as e:
-        print("1secmail domains:",e)
-    try:
-        data,_=await providers.request(http,"GET","https://api.mail.gw/domains")
-        found.extend((x["domain"],"mailgw") for x in providers_members(data) if isinstance(x,dict) and x.get("domain") and x.get("isActive",True) and not x.get("isPrivate",False))
-    except Exception as e:
-        print("Mail.gw domains:",e)
-    # Сохраняем реальный источник каждого домена; при совпадении предпочитаем Mail.tm.
+        print("1secmail domains error:",e)
+    # Оставляем первый рабочий источник для каждого домена.
     unique={}
     for domain,source in found:
-        unique.setdefault(domain,source)
+        if re.fullmatch(r"[a-z0-9.-]+\\.[a-z]{2,}",domain):
+            unique.setdefault(domain,source)
+    print("Total unique domains:",len(unique))
     return list(unique.items())
 
 @app.get("/api/domains")
