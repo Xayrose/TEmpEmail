@@ -8,15 +8,15 @@ class _EmailTextParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts=[]
     def handle_starttag(self,tag,attrs):
-        if tag.lower() in self.BLOCKS: self.parts.append("\\n")
+        if tag.lower() in self.BLOCKS: self.parts.append("\n")
     def handle_endtag(self,tag):
-        if tag.lower() in self.BLOCKS: self.parts.append("\\n")
+        if tag.lower() in self.BLOCKS: self.parts.append("\n")
     def handle_data(self,data):
         self.parts.append(data)
 
 def html_to_text(value):
     if isinstance(value,list):
-        value="\\n".join(str(x) for x in value if x)
+        value="\n".join(str(x) for x in value if x)
     if not value: return ""
     parser=_EmailTextParser()
     try:
@@ -24,12 +24,12 @@ def html_to_text(value):
         value="".join(parser.parts)
     except Exception:
         value=str(value)
-    lines=[line.strip() for line in value.replace("\\r","").split("\\n")]
+    lines=[line.strip() for line in value.replace("\r","").split("\n")]
     result=[]
     for line in lines:
         if line or (result and result[-1]):
             result.append(line)
-    return "\\n".join(result).strip()
+    return "\n".join(result).strip()
 
 
 
