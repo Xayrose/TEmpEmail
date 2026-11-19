@@ -1,5 +1,37 @@
 import json
+from html.parser import HTMLParser
 from urllib.parse import quote
+
+class _EmailTextParser(HTMLParser):
+    BLOCKS={"address","article","br","dd","div","dl","dt","fieldset","figcaption","figure","footer","form","h1","h2","h3","h4","h5","h6","header","hr","li","main","ol","p","pre","section","table","tr","ul"}
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts=[]
+    def handle_starttag(self,tag,attrs):
+        if tag.lower() in self.BLOCKS: self.parts.append("\\n")
+    def handle_endtag(self,tag):
+        if tag.lower() in self.BLOCKS: self.parts.append("\\n")
+    def handle_data(self,data):
+        self.parts.append(data)
+
+def html_to_text(value):
+    if isinstance(value,list):
+        value="\\n".join(str(x) for x in value if x)
+    if not value: return ""
+    parser=_EmailTextParser()
+    try:
+        parser.feed(str(value)); parser.close()
+        value="".join(parser.parts)
+    except Exception:
+        value=str(value)
+    lines=[line.strip() for line in value.replace("\\r","").split("\\n")]
+    result=[]
+    for line in lines:
+        if line or (result and result[-1]):
+            result.append(line)
+    return "\\n".join(result).strip()
+
+
 
 def members(data):
     if isinstance(data,list): return data
