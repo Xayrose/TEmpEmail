@@ -99,8 +99,9 @@ async def poller():
                             c=await d.execute("INSERT OR IGNORE INTO seen VALUES(?,?)",(b["id"],m["id"])); await d.commit()
                             fresh=c.rowcount==1
                         if fresh:
-                            msg=(f"✉️ Новое письмо\n{b['address']}\nОт: {m.get('from') or '?'}\nТема: {m.get('subject') or '(без темы)'}\n\n{m.get('intro','')[:600]}\nОткройте Mini App для чтения.")
-                            async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg}) as r: await r.read()
+                            msg=(f"✉️ Новое письмо\n{b['address']}\nОт: {m.get('from') or '?'}\nТема: {m.get('subject') or '(без темы)'}\n\n{str(m.get('intro') or '')[:500]}")
+                            keyboard={"inline_keyboard":[[{"text":"📖 Читать полностью в боте","callback_data":f"read:{b['id']}:{m['id']}"}]]}
+                            async with http.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":b["user_id"],"text":msg,"reply_markup":keyboard,"disable_web_page_preview":True}) as r: await r.read()
                 except Exception as e: print("poll:",e)
                 await asyncio.sleep(30 if b.get("provider")=="guerrilla" else (10 if b.get("provider")=="1secmail" else 2))
         except Exception as e: print("poller:",e)
