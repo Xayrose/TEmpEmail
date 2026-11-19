@@ -66,6 +66,26 @@ async def getboxes(uid):
 async def getbox(bid,uid):
     async with aiosqlite.connect(DB) as d:
         d.row_factory=aiosqlite.Row;c=await d.execute("SELECT * FROM inboxes WHERE id=? AND user_id=?",(bid,uid));x=await c.fetchone();return dict(x) if x else None
+
+def provider_meta(box):
+    try: meta=json.loads(box.get("provider_data") or "{}")
+    except (TypeError,ValueError): meta={}
+    if box.get("token"): meta.setdefault("token",box["token"])
+    if box.get("api_id"): meta.setdefault("api_id",box["api_id"])
+    return meta
+
+async def send_long(chat_id, text):
+    chunks=[]
+    while len(text)>3900:
+        cut=text.rfind("\\n",0,3900)
+        if cut<1200: cut=3900
+        chunks.append(text[:cut])
+        text=text[cut:].lstrip()
+    if text: chunks.append(text)
+    for index,chunk in enumerate(chunks):
+        prefix=f"📨 Продолжение ({index+1}/{len(chunks)})\\n" if len(chunks)>1 else ""
+        await bot.send_message(chat_id,prefix+chunk,disable_web_page_preview=True)
+
 async def show_domains(m):
     try:
         available=(await domains())[:30]
@@ -153,9 +173,28 @@ async def open_cb(c):
             subject=html.escape(str(x.get("subject") or "(без темы)"))
             sender=html.escape(str(x.get("from") or "?"))
             intro=html.escape(str(x.get("intro") or "")[:250])
-            await c.message.answer(f"✉️ <b>{subject}</b>\nОт: {sender}\n\n{intro}",parse_mode="HTML")
+            kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📖 Читать полностью",callback_data=f"read:{b['id']}:{x['id']}")]])
+            await c.message.answer(f"✉️ <b>{subject}</b>\\nОт: {sender}\\n\\n{intro}",parse_mode="HTML",reply_markup=kb)
     except Exception as e: await c.message.answer("Ошибка: "+html.escape(str(e)))
     await c.answer()
+
+@dp.callback_query(F.data.startswith("read:"))
+async def read_cb(c):
+    try:
+        _, raw_bid, message_id = c.data.split(":",2)
+        b=await getbox(int(raw_bid),c.from_user.id)
+        if not b or b["expires"]<=int(time.time()):
+            await c.answer("Почта истекла или не найдена",show_alert=True); return
+        meta=provider_meta(b)
+        letter=await providers.read(b.get("provider") or "mailtm",b["address"],meta,message_id,session)
+        body=str(letter.get("text") or "Текст письма отсутствует").strip()
+        header=(f"✉️ {letter.get('subject') or '(без темы)'}\\nОт: {letter.get('from') or '?'}\\nКому: {b['address']}\\nДата: {letter.get('created') or 'не указана'}\\n{'—'*24}\\n\\n")
+        await send_long(c.from_user.id,header+body)
+        await c.answer("Письмо загружено")
+    except Exception as e:
+        await c.answer("Не удалось открыть письмо",show_alert=True)
+        await c.message.answer("Ошибка чтения письма: "+str(e)[:500])
+
 @dp.callback_query(F.data.startswith("del:"))
 async def del_cb(c):
     b=await getbox(int(c.data.split(":")[1]),c.from_user.id)
