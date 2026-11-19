@@ -77,13 +77,13 @@ def provider_meta(box):
 async def send_long(chat_id, text):
     chunks=[]
     while len(text)>3900:
-        cut=text.rfind("\\n",0,3900)
+        cut=text.rfind("\n",0,3900)
         if cut<1200: cut=3900
         chunks.append(text[:cut])
         text=text[cut:].lstrip()
     if text: chunks.append(text)
     for index,chunk in enumerate(chunks):
-        prefix=f"📨 Продолжение ({index+1}/{len(chunks)})\\n" if len(chunks)>1 else ""
+        prefix=f"📨 Продолжение ({index+1}/{len(chunks)})\n" if len(chunks)>1 else ""
         await bot.send_message(chat_id,prefix+chunk,disable_web_page_preview=True)
 
 async def show_domains(m):
@@ -124,7 +124,7 @@ async def service_cb(c):
         provider=c.data.split(":",1)[1]
         if provider!="guerrilla": raise ValueError("Неизвестный сервис")
         bid,address,lifetime=await create(c.from_user.id,c.from_user.username,provider,"")
-        await c.message.answer(f"✅ <b>Почта создана через Guerrilla Mail</b>\\n<code>{html.escape(address)}</code>\\nСрок: {lifetime//60} мин.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{bid}")],[InlineKeyboardButton(text="Мои почты",callback_data="mails")]]))
+        await c.message.answer(f"✅ <b>Почта создана через Guerrilla Mail</b>\n<code>{html.escape(address)}</code>\nСрок: {lifetime//60} мин.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{bid}")],[InlineKeyboardButton(text="Мои почты",callback_data="mails")]]))
     except Exception as e: await c.message.answer("Ошибка: "+html.escape(str(e)))
     await c.answer()
 @dp.callback_query(F.data.startswith("domain:"))
@@ -174,7 +174,7 @@ async def open_cb(c):
             sender=html.escape(str(x.get("from") or "?"))
             intro=html.escape(str(x.get("intro") or "")[:250])
             kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📖 Читать полностью",callback_data=f"read:{b['id']}:{x['id']}")]])
-            await c.message.answer(f"✉️ <b>{subject}</b>\\nОт: {sender}\\n\\n{intro}",parse_mode="HTML",reply_markup=kb)
+            await c.message.answer(f"✉️ <b>{subject}</b>\nОт: {sender}\n\n{intro}",parse_mode="HTML",reply_markup=kb)
     except Exception as e: await c.message.answer("Ошибка: "+html.escape(str(e)))
     await c.answer()
 
@@ -188,7 +188,7 @@ async def read_cb(c):
         meta=provider_meta(b)
         letter=await providers.read(b.get("provider") or "mailtm",b["address"],meta,message_id,session)
         body=str(letter.get("text") or "Текст письма отсутствует").strip()
-        header=(f"✉️ {letter.get('subject') or '(без темы)'}\\nОт: {letter.get('from') or '?'}\\nКому: {b['address']}\\nДата: {letter.get('created') or 'не указана'}\\n{'—'*24}\\n\\n")
+        header=(f"✉️ {letter.get('subject') or '(без темы)'}\nОт: {letter.get('from') or '?'}\nКому: {b['address']}\nДата: {letter.get('created') or 'не указана'}\n{'—'*24}\n\n")
         await send_long(c.from_user.id,header+body)
         await c.answer("Письмо загружено")
     except Exception as e:
