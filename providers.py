@@ -93,13 +93,13 @@ async def read(provider,address,meta,message_id,session):
     if provider in ("mailtm","mailgw"):
         base=meta.get("base_url","https://api.mail.gw" if provider=="mailgw" else "https://api.mail.tm")
         m,_=await request(session,"GET",base+f"/messages/{quote(str(message_id),safe='')}",headers={"Authorization":"Bearer "+meta["token"]})
-        return {"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"created":m.get("createdAt",""),"text":m.get("text") or m.get("intro") or "Нет текстовой версии письма."}
+        return {"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":sender_address(m.get("from")),"created":m.get("createdAt",""),"text":m.get("text") or html_to_text(m.get("html")) or m.get("intro") or "Нет текстовой версии письма."}
     if provider=="1secmail":
         m,_=await request(session,"GET","https://www.1secmail.com/api/v1/",params={"action":"readMessage","login":meta["login"],"domain":meta["domain"],"id":message_id})
-        return {"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":m.get("from","?"),"created":m.get("date",""),"text":m.get("textBody") or m.get("body") or "Нет текстовой версии письма."}
+        return {"id":str(m["id"]),"subject":m.get("subject") or "(без темы)","from":m.get("from","?"),"created":m.get("date",""),"text":m.get("textBody") or html_to_text(m.get("htmlBody") or m.get("body")) or "Нет текстовой версии письма."}
     if provider=="guerrilla":
         m,_=await request(session,"GET","https://api.guerrillamail.com/ajax.php",params={"f":"fetch_email","email_id":message_id,"ip":"127.0.0.1","agent":"TEMPMAIL Telegram","sid_token":meta["sid"]},headers={"Cookie":"PHPSESSID="+meta["sid"]})
-        return {"id":str(message_id),"subject":m.get("mail_subject") or "(без темы)","from":m.get("mail_from","?"),"created":m.get("mail_timestamp",""),"text":m.get("mail_body") or m.get("mail_excerpt","")}
+        return {"id":str(message_id),"subject":m.get("mail_subject") or "(без темы)","from":m.get("mail_from","?"),"created":m.get("mail_timestamp",""),"text":html_to_text(m.get("mail_body")) or m.get("mail_excerpt","")}
     raise ValueError("Неизвестный сервис")
 
 async def delete(provider, meta, session):
