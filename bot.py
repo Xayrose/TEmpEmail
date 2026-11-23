@@ -58,6 +58,7 @@ async def create(uid,username,provider,domain):
     now=int(time.time())
     async with aiosqlite.connect(DB) as d:
         c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(uid,username,address,meta.get("password",""),meta.get("token",""),meta.get("api_id",""),now+lifetime,now,provider,json.dumps(meta)))
+        await d.execute("UPDATE users SET boxes_created=boxes_created+1,last_active=? WHERE user_id=?",(now,uid))
         await d.commit()
         return c.lastrowid,address,lifetime
 async def getboxes(uid):
@@ -105,7 +106,15 @@ async def show_boxes(chat,uid):
         kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Входящие",callback_data=f"open:{x['id']}"),InlineKeyboardButton(text="Обновить таймер",callback_data=f"timer:{x['id']}")],[InlineKeyboardButton(text="Удалить",callback_data=f"del:{x['id']}")]])
         await bot.send_message(chat,f"📮 <code>{html.escape(x['address'])}</code>\nОсталось: <b>{left//60:02d}:{left%60:02d}</b>",parse_mode="HTML",reply_markup=kb)
 @dp.message(CommandStart())
-async def start(m:Message):await m.answer("✉️ <b>TEMPMAIL</b>\nВременная почта на 60 минут.",parse_mode="HTML",reply_markup=home())
+async def start(m:Message):
+    now=int(time.time())
+    u=m.from_user
+    async with aiosqlite.connect(DB) as d:
+        await d.execute("""INSERT INTO users(user_id,username,first_name,last_name,created,last_active) VALUES(?,?,?,?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_active=excluded.last_active""",
+            (u.id,u.username or "",u.first_name or "",u.last_name or "",now,now))
+        await d.commit()
+    await m.answer("✉️ <b>TEMPMAIL</b>\nВременная почта на 60 минут.",parse_mode="HTML",reply_markup=home())
 @dp.message(Command("app"))
 async def app_cmd(m:Message):await m.answer("Откройте TEMPMAIL:",reply_markup=home())
 @dp.message(Command("new"))
@@ -216,7 +225,11 @@ async def main():
         cols={r[1] for r in await (await d.execute("PRAGMA table_info(inboxes)")).fetchall()}
         if "provider" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider TEXT DEFAULT 'mailtm'")
         if "provider_data" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider_data TEXT DEFAULT '{}'")
-        await d.execute("CREATE TABLE IF NOT EXISTS seen(inbox_id INTEGER,message_id TEXT,PRIMARY KEY(inbox_id,message_id))");await d.commit()
+        await d.execute("CREATE TABLE IF NOT EXISTS seen(inbox_id INTEGER,message_id TEXT,PRIMARY KEY(inbox_id,message_id))")
+        await d.execute("""CREATE TABLE IF NOT EXISTS users(user_id INTEGER PRIMARY KEY,username TEXT NOT NULL DEFAULT '',first_name TEXT NOT NULL DEFAULT '',last_name TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL,last_active INTEGER NOT NULL,boxes_created INTEGER NOT NULL DEFAULT 0)""")
+        await d.execute("CREATE INDEX IF NOT EXISTS idx_inboxes_expiry ON inboxes(expires)")
+        await d.execute("CREATE INDEX IF NOT EXISTS idx_inboxes_user_expiry ON inboxes(user_id,expires)")
+        await d.commit()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25)) as s:
         session=s
         me=await bot.get_me()
