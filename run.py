@@ -3,11 +3,15 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Always run from the directory containing this script. This keeps bot.py,
-# main.py, .env, and relative database paths consistent on hosted panels.
+# Run from the directory containing the application files.
 PROJECT_DIR = Path(__file__).resolve().parent
 os.chdir(PROJECT_DIR)
+
+# Support .env either beside run.py or one directory above it.
+load_dotenv(PROJECT_DIR / ".env")
+load_dotenv(PROJECT_DIR.parent / ".env")
 
 port = os.getenv("PORT", "10000")
 processes = {
