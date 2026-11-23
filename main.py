@@ -42,6 +42,17 @@ async def init_db():
         if "provider" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider TEXT DEFAULT 'mailtm'")
         if "provider_data" not in cols: await d.execute("ALTER TABLE inboxes ADD COLUMN provider_data TEXT DEFAULT '{}'")
         await d.execute("""CREATE TABLE IF NOT EXISTS seen(inbox_id INTEGER,message_id TEXT,PRIMARY KEY(inbox_id,message_id))""")
+        await d.execute("""CREATE TABLE IF NOT EXISTS users(user_id INTEGER PRIMARY KEY,username TEXT NOT NULL DEFAULT '',first_name TEXT NOT NULL DEFAULT '',last_name TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL,last_active INTEGER NOT NULL,boxes_created INTEGER NOT NULL DEFAULT 0)""")
+        await d.execute("CREATE INDEX IF NOT EXISTS idx_inboxes_expiry ON inboxes(expires)")
+        await d.execute("CREATE INDEX IF NOT EXISTS idx_inboxes_user_expiry ON inboxes(user_id,expires)")
+        await d.commit()
+
+async def register_user(u):
+    now=int(time.time())
+    async with aiosqlite.connect(DB) as d:
+        await d.execute("""INSERT INTO users(user_id,username,first_name,last_name,created,last_active) VALUES(?,?,?,?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_active=excluded.last_active""",
+            (u["id"],u.get("username",""),u.get("first_name",""),u.get("last_name",""),now,now))
         await d.commit()
 
 def verify(raw):
@@ -55,7 +66,7 @@ def verify(raw):
         expected=hmac.new(secret,check.encode(),hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected,received): raise ValueError()
         u=json.loads(p["user"])
-        return {"id":int(u["id"]),"username":u.get("username","")}
+        return {"id":int(u["id"]),"username":u.get("username",""),"first_name":u.get("first_name",""),"last_name":u.get("last_name","")}
     except Exception: raise HTTPException(401,"Invalid Telegram session")
 
 def user(authorization):
@@ -142,7 +153,9 @@ async def index(): return FileResponse("static/index.html")
 async def health(): return {"status":"ok"}
 @app.get("/api/me")
 async def me(authorization:str|None=Header(default=None)):
-    u=user(authorization); return {"user":u,"is_admin":u["id"] in ADMIN_IDS}
+    u=user(authorization)
+    await register_user(u)
+    return {"user":u,"is_admin":u["id"] in ADMIN_IDS}
 @app.get("/api/providers")
 async def get_providers(authorization:str|None=Header(default=None)):
     user(authorization)
@@ -216,6 +229,7 @@ class Create(BaseModel):
 @app.post("/api/inboxes")
 async def create(req:Create,authorization:str|None=Header(default=None)):
     u=user(authorization)
+    await register_user(u)
     name=req.name.strip().lower()
     if name and not re.fullmatch(r"[a-z0-9._-]{1,40}",name): raise HTTPException(400,"Некорректное имя ящика")
     try:
@@ -231,7 +245,9 @@ async def create(req:Create,authorization:str|None=Header(default=None)):
     except Exception as e: raise HTTPException(502,str(e))
     now=int(time.time())
     async with aiosqlite.connect(DB) as d:
-        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(u["id"],u["username"],address,"",meta.get("token",""),meta.get("api_id",""),now+lifetime,now,provider,json.dumps(meta))); await d.commit()
+        c=await d.execute("INSERT INTO inboxes(user_id,username,address,password,token,api_id,expires,created,provider,provider_data) VALUES(?,?,?,?,?,?,?,?,?,?)",(u["id"],u["username"],address,"",meta.get("token",""),meta.get("api_id",""),now+lifetime,now,provider,json.dumps(meta)))
+        await d.execute("UPDATE users SET boxes_created=boxes_created+1,last_active=? WHERE user_id=?",(now,u["id"]))
+        await d.commit()
         return {"id":c.lastrowid,"address":address,"expires":now+lifetime,"provider":provider}
 
 @app.get("/api/inboxes")
@@ -265,6 +281,6 @@ async def stats(authorization:str|None=Header(default=None)):
         c=await d.execute("SELECT COUNT(*),COUNT(DISTINCT user_id) FROM inboxes WHERE expires>?",(int(time.time()),)); a,b=await c.fetchone()
         c=await d.execute("SELECT COUNT(*) FROM inboxes"); total=(await c.fetchone())[0]
         c=await d.execute("SELECT COUNT(*) FROM seen"); seen=(await c.fetchone())[0]
-        c=await d.execute("SELECT user_id,username,COUNT(*) FROM inboxes GROUP BY user_id ORDER BY MAX(created) DESC LIMIT 30")
-        users=[{"telegram_id":r[0],"username":r[1],"boxes_created":r[2]} for r in await c.fetchall()]
+        c=await d.execute("SELECT user_id,username,first_name,last_name,created,last_active,boxes_created FROM users ORDER BY last_active DESC LIMIT 30")
+        users=[{"telegram_id":r[0],"username":r[1],"first_name":r[2],"last_name":r[3],"registered_at":r[4],"last_active":r[5],"boxes_created":r[6]} for r in await c.fetchall()]
     return {"active_boxes":a,"active_users":b,"total_created":total,"messages_seen":seen,"users":users}
