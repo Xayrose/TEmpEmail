@@ -2,13 +2,22 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+# Always run from the directory containing this script. This keeps bot.py,
+# main.py, .env, and relative database paths consistent on hosted panels.
+PROJECT_DIR = Path(__file__).resolve().parent
+os.chdir(PROJECT_DIR)
 
 port = os.getenv("PORT", "10000")
 processes = {
-    "telegram-bot": subprocess.Popen([sys.executable, "bot.py"]),
-    "fastapi": subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", port]),
+    "telegram-bot": subprocess.Popen([sys.executable, str(PROJECT_DIR / "bot.py")]),
+    "fastapi": subprocess.Popen([
+        sys.executable, "-m", "uvicorn", "main:app",
+        "--host", "0.0.0.0", "--port", port,
+    ]),
 }
-print("Started Telegram bot and FastAPI supervisor", flush=True)
+print(f"Started Telegram bot and FastAPI supervisor from {PROJECT_DIR}", flush=True)
 try:
     while True:
         for name, process in processes.items():
